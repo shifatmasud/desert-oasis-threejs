@@ -428,7 +428,7 @@
       return tex;
     }
 
-    const terrainGeo = new THREE.PlaneGeometry(250, 250, isPhone ? 128 : 170, isPhone ? 128 : 170);
+    const terrainGeo = new THREE.PlaneGeometry(250, 250, isPhone ? 92 : 120, isPhone ? 92 : 120);
     terrainGeo.rotateX(-Math.PI / 2);
     const tPos = terrainGeo.attributes.position;
     const tColors = new Float32Array(tPos.count * 3);
@@ -1353,11 +1353,12 @@ float sandNoise(vec2 p) {
       return geo;
     }
 
+    const frondPairScale = isPhone ? 0.56 : 0.70;
     const sharedFrondGeos = [
-      createCurvedPalmFrondGeometry(4.0, 1.28, 36, 1, 0.64, 0.28),
-      createCurvedPalmFrondGeometry(3.8, 1.18, 34, 2, 0.50, 0.36),
-      createCurvedPalmFrondGeometry(4.2, 1.32, 38, 3, 0.44, 0.44),
-      createCurvedPalmFrondGeometry(3.9, 1.22, 35, 4, 0.58, 0.32)
+      createCurvedPalmFrondGeometry(4.0, 1.28, Math.round(36 * frondPairScale), 1, 0.64, 0.28),
+      createCurvedPalmFrondGeometry(3.8, 1.18, Math.round(34 * frondPairScale), 2, 0.50, 0.36),
+      createCurvedPalmFrondGeometry(4.2, 1.32, Math.round(38 * frondPairScale), 3, 0.44, 0.44),
+      createCurvedPalmFrondGeometry(3.9, 1.22, Math.round(35 * frondPairScale), 4, 0.58, 0.32)
     ];
     const coconutGeo = new THREE.SphereGeometry(0.16, 10, 10);
     const coconutMat = new THREE.MeshStandardMaterial({ color: 0x5d3d1e, roughness: 0.72 });
@@ -1416,15 +1417,21 @@ float sandNoise(vec2 p) {
       collar.scale.setScalar(scale);
       crown.add(collar);
 
+      const nutGeos = [];
+      const nutDummy = new THREE.Object3D();
       for (let c = 0; c < 4; c++) {
         const ca = (c / 4) * Math.PI * 2;
-        const nut = new THREE.Mesh(coconutGeo, coconutMat);
-        nut.position.set(Math.cos(ca) * 0.22 * scale, -0.24 * scale, Math.sin(ca) * 0.22 * scale);
-        nut.scale.setScalar(scale);
-        crown.add(nut);
+        nutDummy.position.set(Math.cos(ca) * 0.22 * scale, -0.24 * scale, Math.sin(ca) * 0.22 * scale);
+        nutDummy.scale.setScalar(scale);
+        nutDummy.updateMatrix();
+        const ng = coconutGeo.clone();
+        ng.applyMatrix4(nutDummy.matrix);
+        nutGeos.push(ng);
       }
+      const mergedNuts = mergeGeometries(nutGeos, false);
+      crown.add(new THREE.Mesh(mergedNuts, coconutMat));
 
-      // 3-tier lush rounded palm crown + compact inner crown core
+      // 3-tier lush rounded palm crown + compact inner crown core (merged into 1 draw call per palm)
       const upperCount = Math.round(frondCount * 0.28);
       const midCount = Math.round(frondCount * 0.40);
       const lowerCount = frondCount - upperCount - midCount;
@@ -1434,35 +1441,49 @@ float sandNoise(vec2 p) {
         { count: lowerCount, pitchMin: -0.26, pitchMax: -0.05, scaleMult: 1.00, offset: 0.47 }
       ];
 
+      const crownFrondGeos = [];
+      const frondDummy = new THREE.Object3D();
       let fIdx = 0;
       for (const spec of tierSpecs) {
         for (let i = 0; i < spec.count; i++) {
           const frac = i / spec.count;
           const angle = (frac + spec.offset) * Math.PI * 2 + Math.sin(fIdx * 1.9 + x) * 0.14;
-          const frond = new THREE.Mesh(sharedFrondGeos[fIdx % sharedFrondGeos.length], frondMat);
           const sc = (0.94 + ((fIdx * 7) % 5) * 0.03) * scale * spec.scaleMult;
-          frond.scale.setScalar(sc);
-          frond.rotation.y = angle;
-          frond.rotation.x = -(spec.pitchMin + ((fIdx % 3) / 2) * (spec.pitchMax - spec.pitchMin));
-          frond.rotation.z = Math.sin(fIdx * 2.3) * 0.10;
-          frond.castShadow = true;
-          frond.receiveShadow = false;
-          crown.add(frond);
+          frondDummy.position.set(0, 0, 0);
+          frondDummy.scale.setScalar(sc);
+          frondDummy.rotation.set(
+            -(spec.pitchMin + ((fIdx % 3) / 2) * (spec.pitchMax - spec.pitchMin)),
+            angle,
+            Math.sin(fIdx * 2.3) * 0.10
+          );
+          frondDummy.updateMatrix();
+          const fg = sharedFrondGeos[fIdx % sharedFrondGeos.length].clone();
+          fg.applyMatrix4(frondDummy.matrix);
+          crownFrondGeos.push(fg);
           fIdx++;
         }
       }
 
       // Soft inner core fronds matching crown length so the top stays full
       for (let i = 0; i < 8; i++) {
-        const frond = new THREE.Mesh(sharedFrondGeos[i % sharedFrondGeos.length], frondMat);
-        frond.scale.setScalar(0.86 * scale);
-        frond.rotation.y = (i / 8) * Math.PI * 2 + 0.2;
-        frond.rotation.x = -0.68 - (i % 2) * 0.14;
-        frond.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.08;
-        frond.castShadow = false;
-        frond.receiveShadow = false;
-        crown.add(frond);
+        frondDummy.position.set(0, 0, 0);
+        frondDummy.scale.setScalar(0.86 * scale);
+        frondDummy.rotation.set(
+          -0.68 - (i % 2) * 0.14,
+          (i / 8) * Math.PI * 2 + 0.2,
+          (i % 2 === 0 ? 1 : -1) * 0.08
+        );
+        frondDummy.updateMatrix();
+        const fg = sharedFrondGeos[i % sharedFrondGeos.length].clone();
+        fg.applyMatrix4(frondDummy.matrix);
+        crownFrondGeos.push(fg);
       }
+
+      const mergedCrownGeo = mergeGeometries(crownFrondGeos, false);
+      const crownMesh = new THREE.Mesh(mergedCrownGeo, frondMat);
+      crownMesh.castShadow = true;
+      crownMesh.receiveShadow = false;
+      crown.add(crownMesh);
 
       group.add(crown);
       palmCrowns.push({ crown, scale, phase: x * 0.6 + z * 0.4 });
