@@ -1612,41 +1612,91 @@
     }
 
     // Smooth sun-warmed oasis shoreline stones
-    const stoneGeo = new THREE.DodecahedronGeometry(0.18, 1);
-    const stoneMat = new THREE.MeshStandardMaterial({ color: 0xc29e78, roughness: 0.82, metalness: 0.02 });
-    const stoneInst = new THREE.InstancedMesh(stoneGeo, stoneMat, 36);
+    const stoneGeo = new THREE.DodecahedronGeometry(0.14, 1);
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88, metalness: 0.02 });
+    const stoneInst = new THREE.InstancedMesh(stoneGeo, stoneMat, 48);
     stoneInst.castShadow = true;
     stoneInst.receiveShadow = true;
+    const stonePalette = [
+      new THREE.Color(0xb89674),
+      new THREE.Color(0x9c7c5e),
+      new THREE.Color(0xc9a882),
+      new THREE.Color(0x88705c)
+    ];
     const stoneDummy = new THREE.Object3D();
-    for (let i = 0; i < 36; i++) {
-      const ang = (i / 36) * Math.PI * 2 + rand() * 0.15;
-      const rad = 0.96 + rand() * 0.10;
+    for (let i = 0; i < 48; i++) {
+      const ang = (i / 48) * Math.PI * 2 + rand() * 0.20;
+      const rad = 0.99 + rand() * 0.08;
       const sx = Math.cos(ang) * 12.6 * rad;
       const sz = 0.6 + Math.sin(ang) * 8.3 * rad;
-      const sy = getTerrainHeight(sx, sz) - 0.02;
+      const sy = getTerrainHeight(sx, sz) - 0.03;
       stoneDummy.position.set(sx, sy, sz);
-      stoneDummy.rotation.set(rand() * 0.6, rand() * Math.PI * 2, rand() * 0.6);
-      stoneDummy.scale.set(0.7 + rand() * 1.1, 0.45 + rand() * 0.4, 0.7 + rand() * 1.0);
+      stoneDummy.rotation.set(rand() * 0.35, rand() * Math.PI * 2, rand() * 0.35);
+      stoneDummy.scale.set(0.65 + rand() * 0.95, 0.28 + rand() * 0.24, 0.65 + rand() * 0.90);
       stoneDummy.updateMatrix();
       stoneInst.setMatrixAt(i, stoneDummy.matrix);
+      stoneInst.setColorAt(i, stonePalette[i % stonePalette.length]);
     }
+    stoneInst.instanceColor.needsUpdate = true;
     scene.add(stoneInst);
 
-    // Gentle golden-hour dragonflies / butterflies hovering over the oasis
+    // Floating fallen hibiscus petals & olive leaves resting on the calm water edge
+    const floaters = [];
+    const floaterGeo = new THREE.CircleGeometry(0.055, 6);
+    floaterGeo.scale(1.5, 0.75, 1.0);
+    floaterGeo.rotateX(-Math.PI / 2);
+    const floaterMats = [
+      new THREE.MeshStandardMaterial({ color: 0xd9846c, roughness: 0.65, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ color: 0x9aa854, roughness: 0.65, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ color: 0xe8b288, roughness: 0.65, side: THREE.DoubleSide })
+    ];
+    for (let i = 0; i < 16; i++) {
+      const a = rand() * Math.PI * 2;
+      const r = 0.78 + rand() * 0.16;
+      const fx = Math.cos(a) * 11.8 * r;
+      const fz = 0.6 + Math.sin(a) * 7.8 * r;
+      const fm = new THREE.Mesh(floaterGeo, floaterMats[i % floaterMats.length]);
+      fm.position.set(fx, 0.026, fz);
+      fm.rotation.y = rand() * Math.PI * 2;
+      fm.scale.setScalar(0.75 + rand() * 0.7);
+      scene.add(fm);
+      floaters.push({ mesh: fm, baseX: fx, baseZ: fz, phase: rand() * Math.PI * 2 });
+    }
+
+    // Delicate golden-hour butterflies near the flowers & shoreline
     const flyers = [];
-    const flyerMat = new THREE.MeshBasicMaterial({ color: 0xffe4a0, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
-    const wingGeo = new THREE.PlaneGeometry(0.10, 0.05);
-    for (let i = 0; i < 6; i++) {
+    const flyerMat = new THREE.MeshBasicMaterial({ color: 0xf4bd74, side: THREE.DoubleSide, transparent: true, opacity: 0.72 });
+    const wingGeo = new THREE.CircleGeometry(0.036, 3);
+    for (let i = 0; i < 5; i++) {
       const fGroup = new THREE.Group();
       const wL = new THREE.Mesh(wingGeo, flyerMat);
       const wR = new THREE.Mesh(wingGeo, flyerMat);
-      wL.position.x = -0.05;
-      wR.position.x = 0.05;
+      wL.position.x = -0.022;
+      wR.position.x = 0.022;
       fGroup.add(wL, wR);
-      const basePos = new THREE.Vector3((rand() - 0.5) * 12, 0.55 + rand() * 1.4, -2 + rand() * 9);
+      const basePos = new THREE.Vector3((rand() - 0.5) * 11, 0.48 + rand() * 0.9, 1.5 + rand() * 7.5);
       fGroup.position.copy(basePos);
       scene.add(fGroup);
-      flyers.push({ group: fGroup, wL, wR, base: basePos, phase: rand() * Math.PI * 2, speed: 0.8 + rand() * 0.7 });
+      flyers.push({ group: fGroup, wL, wR, base: basePos, phase: rand() * Math.PI * 2, speed: 0.75 + rand() * 0.6 });
+    }
+
+    // Tiny distant desert swallows gliding high in the golden-hour sky
+    const birds = [];
+    const birdMat = new THREE.MeshBasicMaterial({ color: 0x5c4654, side: THREE.DoubleSide, transparent: true, opacity: 0.72 });
+    const birdWingGeo = new THREE.PlaneGeometry(0.24, 0.055);
+    for (let i = 0; i < 4; i++) {
+      const bGroup = new THREE.Group();
+      const bL = new THREE.Mesh(birdWingGeo, birdMat);
+      const bR = new THREE.Mesh(birdWingGeo, birdMat);
+      bL.position.x = -0.11;
+      bR.position.x = 0.11;
+      bL.rotation.z = 0.22;
+      bR.rotation.z = -0.22;
+      bGroup.add(bL, bR);
+      const bBase = new THREE.Vector3(3.5 + i * 2.2 + rand() * 1.4, 11.2 + rand() * 2.4, -36 - rand() * 8);
+      bGroup.position.copy(bBase);
+      scene.add(bGroup);
+      birds.push({ group: bGroup, bL, bR, base: bBase, phase: rand() * Math.PI * 2 });
     }
 
     // Low-lying drifting oasis mist / fog layers over water & dune base
@@ -1759,12 +1809,26 @@
       animeFilmicPass.uniforms.uTime.value = t;
 
       for (const fl of flyers) {
-        fl.group.position.x = fl.base.x + Math.sin(t * fl.speed + fl.phase) * 1.1;
-        fl.group.position.y = fl.base.y + Math.sin(t * fl.speed * 1.7 + fl.phase) * 0.22;
-        fl.group.position.z = fl.base.z + Math.cos(t * fl.speed * 0.8 + fl.phase) * 0.9;
+        fl.group.position.x = fl.base.x + Math.sin(t * fl.speed + fl.phase) * 0.85;
+        fl.group.position.y = fl.base.y + Math.sin(t * fl.speed * 1.7 + fl.phase) * 0.16;
+        fl.group.position.z = fl.base.z + Math.cos(t * fl.speed * 0.8 + fl.phase) * 0.75;
         const flap = Math.sin(t * 22.0 + fl.phase) * 0.65;
         fl.wL.rotation.z = flap;
         fl.wR.rotation.z = -flap;
+      }
+
+      for (const ft of floaters) {
+        ft.mesh.position.x = ft.baseX + Math.sin(t * 0.25 + ft.phase) * 0.06;
+        ft.mesh.position.z = ft.baseZ + Math.cos(t * 0.20 + ft.phase) * 0.05;
+        ft.mesh.rotation.y += 0.0008;
+      }
+
+      for (const b of birds) {
+        b.group.position.x = b.base.x - Math.sin(t * 0.14 + b.phase) * 2.4;
+        b.group.position.y = b.base.y + Math.sin(t * 0.35 + b.phase) * 0.25;
+        const flap = 0.22 + Math.sin(t * 5.2 + b.phase) * 0.28;
+        b.bL.rotation.z = flap;
+        b.bR.rotation.z = -flap;
       }
 
       for (const item of palmCrowns) {
