@@ -395,6 +395,7 @@
     sandBumpTex.repeat.set(36, 36);
     sandBumpTex.anisotropy = 4;
 
+    const terrainTimeUniform = { value: 0 };
     const terrainMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       roughness: 0.90,
@@ -404,6 +405,7 @@
     });
     terrainMat.onBeforeCompile = (shader) => {
       shader.uniforms.uSunDirSand = { value: sunDir };
+      shader.uniforms.uSandTime = terrainTimeUniform;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vSandWorldPos;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSandWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
@@ -411,6 +413,7 @@
         .replace('#include <common>', `#include <common>
 varying vec3 vSandWorldPos;
 uniform vec3 uSunDirSand;
+uniform float uSandTime;
 float sandHash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
@@ -440,18 +443,28 @@ float sandNoise(vec2 p) {
   float rippleSlope = (rFine * 0.105 * distFade + rBroad * 0.028 + microGrain * 0.055) * smoothstep(0.02, 0.35, vSandWorldPos.y);
   normal = normalize(normal + vec3(rippleSlope, 0.0, rippleSlope * 0.65));
 }`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+  float wetShoreMask = smoothstep(0.24, 0.02, vSandWorldPos.y);
+  roughnessFactor = mix(roughnessFactor, 0.24, wetShoreMask * 0.75);`)
         .replace('#include <dithering_fragment>', `
 {
-  // Warm golden-hour crest scatter + subtle quartz silica grain sparkle
+  // Warm golden-hour crest scatter + sand SSS + subtle quartz silica grain sparkle
   vec3 vDir = normalize(cameraPosition - vSandWorldPos);
   vec3 hDir = normalize(uSunDirSand + vDir);
   float grainCell = sandHash(floor(vSandWorldPos.xz * 78.0));
   float sparkle = step(0.965, grainCell) * pow(max(dot(normal, hDir), 0.0), 42.0) * smoothstep(0.15, 0.6, vSandWorldPos.y);
   float sunFace = clamp(dot(normal, uSunDirSand), 0.0, 1.0);
   gl_FragColor.rgb += vec3(1.0, 0.88, 0.62) * sparkle * 0.28 * sunFace;
-  // Warm honey-gold velvet sheen on sunlit dune crests
+  // Subsurface forward/wrap sand scatter on sunlit dune crests
+  float sandSSS = pow(clamp(dot(vDir, -uSunDirSand) * 0.5 + 0.5, 0.0, 1.0), 2.4) * smoothstep(0.6, 5.5, vSandWorldPos.y);
+  gl_FragColor.rgb += vec3(0.24, 0.13, 0.04) * sandSSS * 0.45;
   float rimSand = pow(1.0 - max(dot(normal, vDir), 0.0), 3.0) * sunFace * smoothstep(1.0, 6.0, vSandWorldPos.y);
   gl_FragColor.rgb += vec3(0.28, 0.16, 0.05) * rimSand;
+  // Caustic bounce reflection projected onto wet shoreline sand just above water
+  float shoreBounceZone = smoothstep(0.005, 0.05, vSandWorldPos.y) * smoothstep(0.28, 0.04, vSandWorldPos.y);
+  float cBounce = sin(vSandWorldPos.x * 5.2 + uSandTime * 1.4 + sin(vSandWorldPos.z * 4.5 - uSandTime)) * 0.5 + 0.5;
+  cBounce = pow(cBounce, 3.0);
+  gl_FragColor.rgb += vec3(0.18, 0.34, 0.30) * cBounce * shoreBounceZone * 0.26;
 }
 #include <dithering_fragment>`);
     };
@@ -464,13 +477,15 @@ float sandNoise(vec2 p) {
     // ------------------------------------------------------------
     // 5. Physically-Based Oasis Water
     // ------------------------------------------------------------
+    const waterContactPts = Array.from({ length: 12 }, () => new THREE.Vector3(999, 999, 0.1));
     const waterShader = {
       uniforms: {
         color: { value: null },
         tDiffuse: { value: null },
         textureMatrix: { value: null },
         uTime: { value: 0 },
-        uSunDir: { value: sunDir }
+        uSunDir: { value: sunDir },
+        uContactPts: { value: waterContactPts }
       },
       vertexShader: `
         uniform mat4 textureMatrix;
@@ -491,6 +506,7 @@ float sandNoise(vec2 p) {
         uniform sampler2D tDiffuse;
         uniform float uTime;
         uniform vec3 uSunDir;
+        uniform vec3 uContactPts[12];
         varying vec4 vUv;
         varying vec3 vWorldPos;
 
@@ -547,6 +563,17 @@ float sandNoise(vec2 p) {
           grad += normalize(p - vec2(-2.6, 1.4) + 1e-4) * cos(r1 * 10.0 - t * 1.6) * exp(-r1 * 1.05) * 0.0024;
           float r2 = length(p - vec2(3.4, -0.8));
           grad += normalize(p - vec2(3.4, -0.8) + 1e-4) * cos(r2 * 9.0 - t * 1.4 + 1.8) * exp(-r2 * 1.15) * 0.0020;
+
+          // Gentle concentric capillary wakes around stones & floaters touching water
+          for (int i = 0; i < 12; i++) {
+            vec2 cPt = uContactPts[i].xy;
+            float cRad = uContactPts[i].z;
+            float cd = length(p - cPt) - cRad;
+            if (cd > 0.0 && cd < 1.8) {
+              vec2 dir = normalize(p - cPt + 1e-4);
+              grad += dir * cos(cd * 18.0 - t * 2.2) * exp(-cd * 2.6) * 0.0032;
+            }
+          }
 
           return grad;
         }
@@ -646,6 +673,17 @@ float sandNoise(vec2 p) {
           float foamNoise = vnoise(p * 2.8 + vec2(uTime * 0.10, -uTime * 0.08));
           float lap = smoothstep(0.06, 0.010, depth + foamNoise * 0.014) * smoothstep(0.004, 0.022, depth);
           col = mix(col, vec3(0.84, 0.82, 0.76), lap * 0.10);
+
+          // Water-contact optics: subtle capillary meniscus + contact AO around stones & floaters
+          for (int i = 0; i < 12; i++) {
+            float cd = length(p - uContactPts[i].xy) - uContactPts[i].z;
+            if (cd > -0.04 && cd < 0.22) {
+              float contactShadow = smoothstep(-0.02, 0.14, cd);
+              col *= mix(0.68, 1.0, contactShadow);
+              float meniscusRing = smoothstep(0.08, 0.01, abs(cd));
+              col += vec3(0.24, 0.30, 0.28) * meniscusRing * 0.35;
+            }
+          }
 
           float alpha = smoothstep(0.001, 0.13, depth);
           gl_FragColor = vec4(col, alpha);
@@ -1605,10 +1643,11 @@ float sandNoise(vec2 p) {
     // Layer 2: Dry golden desert scrub & grass tufts bridging lush banks to outer sand
     const dryGrassMat = new THREE.MeshStandardMaterial({
       color: 0xc2a15c,
-      roughness: 0.85,
+      roughness: 0.82,
       metalness: 0.0,
       side: THREE.DoubleSide
     });
+    applyFoliageSSS(dryGrassMat, 0.42);
     const dryScrubSpots = [
       [-12.8, 6.2], [-13.4, 2.4], [-11.8, -4.8], [-8.8, -6.6],
       [12.8, 6.0],  [13.6, 1.8],  [11.6, -4.6],  [8.6, -6.4],
@@ -1692,6 +1731,26 @@ float sandNoise(vec2 p) {
     // Smooth sun-warmed oasis shoreline stones
     const stoneGeo = new THREE.DodecahedronGeometry(0.14, 1);
     const stoneMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88, metalness: 0.02 });
+    stoneMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uStoneTime = terrainTimeUniform;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vStoneWorldPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 swp = modelMatrix * instanceMatrix * vec4(transformed, 1.0);\nvStoneWorldPos = swp.xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vStoneWorldPos;\nuniform float uStoneTime;')
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+  float stoneWet = smoothstep(0.14, 0.0, vStoneWorldPos.y);
+  roughnessFactor = mix(roughnessFactor, 0.18, stoneWet * 0.85);`)
+        .replace('#include <dithering_fragment>', `{
+  float stoneWetRing = smoothstep(0.14, -0.02, vStoneWorldPos.y);
+  gl_FragColor.rgb *= mix(1.0, 0.58, stoneWetRing);
+  float cStone = sin(vStoneWorldPos.x * 7.5 + uStoneTime * 1.6 + sin(vStoneWorldPos.z * 6.5 - uStoneTime)) * 0.5 + 0.5;
+  cStone = pow(cStone, 2.8);
+  float bounceZone = smoothstep(0.22, 0.0, vStoneWorldPos.y);
+  gl_FragColor.rgb += vec3(0.22, 0.42, 0.36) * cStone * bounceZone * 0.45;
+}
+#include <dithering_fragment>`);
+    };
     const stoneInst = new THREE.InstancedMesh(stoneGeo, stoneMat, 48);
     stoneInst.castShadow = true;
     stoneInst.receiveShadow = true;
@@ -1702,6 +1761,7 @@ float sandNoise(vec2 p) {
       new THREE.Color(0x88705c)
     ];
     const stoneDummy = new THREE.Object3D();
+    let contactIdx = 0;
     for (let i = 0; i < 48; i++) {
       const ang = (i / 48) * Math.PI * 2 + rand() * 0.20;
       const rad = 0.99 + rand() * 0.08;
@@ -1714,6 +1774,9 @@ float sandNoise(vec2 p) {
       stoneDummy.updateMatrix();
       stoneInst.setMatrixAt(i, stoneDummy.matrix);
       stoneInst.setColorAt(i, stonePalette[i % stonePalette.length]);
+      if (sy < 0.08 && contactIdx < 8) {
+        waterContactPts[contactIdx++].set(sx, sz, 0.16);
+      }
     }
     stoneInst.instanceColor.needsUpdate = true;
     scene.add(stoneInst);
@@ -1732,6 +1795,9 @@ float sandNoise(vec2 p) {
       stoneDummy.updateMatrix();
       subStoneInst.setMatrixAt(i, stoneDummy.matrix);
       subStoneInst.setColorAt(i, stonePalette[(i + 1) % stonePalette.length]);
+      if (contactIdx < 10) {
+        waterContactPts[contactIdx++].set(sx, sz, 0.18);
+      }
     }
     subStoneInst.instanceColor.needsUpdate = true;
     scene.add(subStoneInst);
@@ -1742,10 +1808,11 @@ float sandNoise(vec2 p) {
     floaterGeo.scale(1.5, 0.75, 1.0);
     floaterGeo.rotateX(-Math.PI / 2);
     const floaterMats = [
-      new THREE.MeshStandardMaterial({ color: 0xd9846c, roughness: 0.65, side: THREE.DoubleSide }),
-      new THREE.MeshStandardMaterial({ color: 0x9aa854, roughness: 0.65, side: THREE.DoubleSide }),
-      new THREE.MeshStandardMaterial({ color: 0xe8b288, roughness: 0.65, side: THREE.DoubleSide })
+      new THREE.MeshStandardMaterial({ color: 0xd9846c, roughness: 0.58, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ color: 0x9aa854, roughness: 0.58, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ color: 0xe8b288, roughness: 0.58, side: THREE.DoubleSide })
     ];
+    floaterMats.forEach((fm) => applyFoliageSSS(fm, 0.55));
     for (let i = 0; i < 16; i++) {
       const a = rand() * Math.PI * 2;
       const r = 0.78 + rand() * 0.16;
@@ -1757,6 +1824,9 @@ float sandNoise(vec2 p) {
       fm.scale.setScalar(0.75 + rand() * 0.7);
       scene.add(fm);
       floaters.push({ mesh: fm, baseX: fx, baseZ: fz, phase: rand() * Math.PI * 2 });
+      if (contactIdx < 12) {
+        waterContactPts[contactIdx++].set(fx, fz, 0.07);
+      }
     }
 
     // Delicate golden-hour butterflies near the flowers & shoreline
@@ -1901,6 +1971,7 @@ float sandNoise(vec2 p) {
       const t = clock.getElapsedTime();
 
       skyMat.uniforms.uTime.value = t;
+      terrainTimeUniform.value = t;
       waterReflector.material.uniforms.uTime.value = t;
       moteMat.uniforms.uTime.value = t;
       mistMat.uniforms.uTime.value = t;
