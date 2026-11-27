@@ -76,25 +76,78 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.98;
+    renderer.toneMappingExposure = 1.05;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.appendChild(renderer.domElement);
+
+    // Procedural Golden-Hour HDRI Environment Map (PMREM IBL for real PBR leaf/bark/stone/sand sheen)
+    const sunDir = new THREE.Vector3(-72, 22, -22).normalize();
+    (function buildGoldenHourIBL() {
+      const w = 256, h = 128;
+      const data = new Float32Array(w * h * 4);
+      const dir = new THREE.Vector3();
+      for (let y = 0; y < h; y++) {
+        const v = y / (h - 1);
+        const theta = (1.0 - v) * Math.PI;
+        const sinT = Math.sin(theta), cosT = Math.cos(theta);
+        for (let x = 0; x < w; x++) {
+          const u = x / (w - 1);
+          const phi = u * Math.PI * 2.0;
+          dir.set(-sinT * Math.sin(phi), cosT, -sinT * Math.cos(phi));
+          let r, g, b;
+          if (dir.y >= 0.0) {
+            const hy = Math.min(dir.y, 1.0);
+            const t1 = THREE.MathUtils.smoothstep(hy, 0.0, 0.16);
+            const t2 = THREE.MathUtils.smoothstep(hy, 0.08, 0.35);
+            r = THREE.MathUtils.lerp(1.05, 0.84, t1);
+            g = THREE.MathUtils.lerp(0.76, 0.58, t1);
+            b = THREE.MathUtils.lerp(0.52, 0.68, t1);
+            r = THREE.MathUtils.lerp(r, 0.32, t2);
+            g = THREE.MathUtils.lerp(g, 0.44, t2);
+            b = THREE.MathUtils.lerp(b, 0.78, t2);
+            const sDot = Math.max(dir.dot(sunDir), 0.0);
+            const sunGlow = Math.pow(sDot, 12.0) * 1.4 + Math.pow(sDot, 180.0) * 5.5;
+            r += sunGlow * 1.0;
+            g += sunGlow * 0.84;
+            b += sunGlow * 0.56;
+          } else {
+            // Warm sand & turquoise-oasis ground bounce
+            const gy = Math.min(-dir.y, 1.0);
+            r = THREE.MathUtils.lerp(0.62, 0.36, gy);
+            g = THREE.MathUtils.lerp(0.46, 0.28, gy);
+            b = THREE.MathUtils.lerp(0.28, 0.20, gy);
+          }
+          const idx = (y * w + x) * 4;
+          data[idx] = r; data[idx + 1] = g; data[idx + 2] = b; data[idx + 3] = 1.0;
+        }
+      }
+      const equirect = new THREE.DataTexture(data, w, h, THREE.RGBAFormat, THREE.FloatType);
+      equirect.mapping = THREE.EquirectangularReflectionMapping;
+      equirect.needsUpdate = true;
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envRT = pmrem.fromEquirectangular(equirect);
+      scene.environment = envRT.texture;
+      scene.environmentIntensity = 0.85;
+      equirect.dispose();
+      pmrem.dispose();
+    })();
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.15,
-      0.65,
-      0.86
+      0.22,
+      0.55,
+      0.84
     );
     composer.addPass(bloomPass);
 
     const animeFilmicPass = new ShaderPass({
       uniforms: {
         tDiffuse: { value: null },
-        uTime: { value: 0 }
+        uTime: { value: 0 },
+        uSunScreenPos: { value: new THREE.Vector2(0.18, 0.78) }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -106,6 +159,7 @@
       fragmentShader: `
         uniform sampler2D tDiffuse;
         uniform float uTime;
+        uniform vec2 uSunScreenPos;
         varying vec2 vUv;
 
         float hash(vec2 p) {
@@ -113,12 +167,38 @@
         }
 
         void main() {
-          vec4 tex = texture2D(tDiffuse, vUv);
-          vec3 col = tex.rgb;
+          // Subtle 65mm cinema edge softness
+          vec2 d = vUv - 0.5;
+          float edgeSoft = smoothstep(0.28, 0.72, length(d)) * 0.0014;
+          vec3 col = texture2D(tDiffuse, vUv).rgb;
+          if (edgeSoft > 0.00005) {
+            col = (
+              col * 0.4 +
+              texture2D(tDiffuse, vUv + vec2(edgeSoft, 0.0)).rgb * 0.15 +
+              texture2D(tDiffuse, vUv - vec2(edgeSoft, 0.0)).rgb * 0.15 +
+              texture2D(tDiffuse, vUv + vec2(0.0, edgeSoft)).rgb * 0.15 +
+              texture2D(tDiffuse, vUv - vec2(0.0, edgeSoft)).rgb * 0.15
+            );
+          }
+
+          // Screen-space crepuscular sun-shafts streaming between palm fronds
+          vec2 rayStep = (uSunScreenPos - vUv) * (0.45 / 10.0);
+          vec2 rayUv = vUv;
+          float shafts = 0.0;
+          float decay = 1.0;
+          for (int i = 0; i < 10; i++) {
+            rayUv += rayStep;
+            vec3 sCol = texture2D(tDiffuse, clamp(rayUv, 0.001, 0.999)).rgb;
+            float sLum = dot(sCol, vec3(0.2126, 0.7152, 0.0722));
+            shafts += smoothstep(0.70, 0.96, sLum) * decay;
+            decay *= 0.84;
+          }
+          float sunProx = exp(-length((vUv - uSunScreenPos) * vec2(1.0, 1.4)) * 1.8);
+          col += vec3(1.0, 0.84, 0.56) * (shafts / 10.0) * sunProx * 0.24;
 
           // Unified golden-hour sunset color grade (lifts crushed black shadows into warm plum)
           float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-          vec3 shadowLift = vec3(0.042, 0.024, 0.042) * (1.0 - smoothstep(0.0, 0.32, lum));
+          vec3 shadowLift = vec3(0.038, 0.022, 0.040) * (1.0 - smoothstep(0.0, 0.30, lum));
           col += shadowLift;
           vec3 highlightTint = vec3(1.04, 0.99, 0.91);
           col = mix(col, col * highlightTint, smoothstep(0.25, 0.85, lum));
@@ -126,19 +206,15 @@
           // Subtle natural filmic contrast
           col = col * col * (3.0 - 2.0 * col) * 0.14 + col * 0.86;
 
-          // Subtle vignette + warm upper-left sun glow
-          vec2 d = vUv - 0.5;
+          // Subtle cinema vignette
           float vig = 1.0 - dot(d, d) * 0.24;
           col *= vig;
-          vec2 sunUv = vec2(0.26, 0.82);
-          float halo = exp(-length((vUv - sunUv) * vec2(1.0, 1.7)) * 4.2);
-          col += vec3(1.0, 0.88, 0.68) * halo * 0.08;
 
           // Fine 35mm grain
-          float grain = (hash(vUv * 1200.0 + fract(uTime) * 37.0) - 0.5) * 0.012;
+          float grain = (hash(vUv * 1200.0 + fract(uTime) * 37.0) - 0.5) * 0.011;
           col += grain;
 
-          gl_FragColor = vec4(clamp(col, 0.0, 1.0), tex.a);
+          gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
         }
       `
     });
@@ -160,7 +236,6 @@
     const hemiLight = new THREE.HemisphereLight(0xffdfb8, 0xd8a870, 1.35);
     scene.add(hemiLight);
 
-    const sunDir = new THREE.Vector3(-72, 22, -22).normalize();
     const sunLight = new THREE.DirectionalLight(0xffd496, 3.1);
     sunLight.position.copy(sunDir).multiplyScalar(95);
     sunLight.castShadow = true;
@@ -2045,6 +2120,8 @@ float sandNoise(vec2 p) {
       }
 
       controls.update();
+      const sunProj = sunDir.clone().multiplyScalar(120).project(camera);
+      animeFilmicPass.uniforms.uSunScreenPos.value.set(sunProj.x * 0.5 + 0.5, sunProj.y * 0.5 + 0.5);
       composer.render();
     }
     animate();
