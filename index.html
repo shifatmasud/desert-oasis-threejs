@@ -891,64 +891,101 @@ float sandNoise(vec2 p) {
       c.width = 256;
       c.height = 512;
       const ctx = c.getContext('2d');
+      const b = document.createElement('canvas');
+      b.width = 256;
+      b.height = 512;
+      const bctx = b.getContext('2d');
+
       ctx.clearRect(0, 0, 256, 512);
+      bctx.fillStyle = '#808080';
+      bctx.fillRect(0, 0, 256, 512);
+
+      const drawClip = (g) => {
+        g.beginPath();
+        g.moveTo(128, 505);
+        g.bezierCurveTo(22, 420, 12, 160, 128, 10);
+        g.bezierCurveTo(244, 160, 234, 420, 128, 505);
+        g.closePath();
+      };
 
       ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(128, 505);
-      ctx.bezierCurveTo(22, 420, 12, 160, 128, 10);
-      ctx.bezierCurveTo(244, 160, 234, 420, 128, 505);
-      ctx.closePath();
+      drawClip(ctx);
       ctx.clip();
 
       const grad = ctx.createLinearGradient(0, 512, 0, 0);
-      grad.addColorStop(0, '#1c3e17');
-      grad.addColorStop(0.55, '#346624');
-      grad.addColorStop(1, '#5d9134');
+      grad.addColorStop(0, '#182b12');
+      grad.addColorStop(0.50, '#2a461c');
+      grad.addColorStop(1, '#446326');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, 256, 512);
 
-      ctx.strokeStyle = 'rgba(135, 185, 84, 0.38)';
-      ctx.lineWidth = 2;
-      for (let y = 56; y < 480; y += 20) {
-        ctx.beginPath();
-        ctx.moveTo(128, y);
-        ctx.quadraticCurveTo(75, y - 16, 16, y - 44);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(128, y);
-        ctx.quadraticCurveTo(181, y - 16, 240, y - 44);
-        ctx.stroke();
+      // Natural organic chlorophyll mottling + subtle edge shadow
+      for (let i = 0; i < 65; i++) {
+        const mx = (Math.sin(i * 12.7) * 0.5 + 0.5) * 256;
+        const my = (Math.cos(i * 7.3) * 0.5 + 0.5) * 512;
+        const mr = 14 + (i % 5) * 8;
+        const rg = ctx.createRadialGradient(mx, my, 1, mx, my, mr);
+        rg.addColorStop(0, i % 2 === 0 ? 'rgba(30, 52, 18, 0.22)' : 'rgba(92, 118, 48, 0.14)');
+        rg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rg;
+        ctx.fillRect(mx - mr, my - mr, mr * 2, mr * 2);
       }
 
-      ctx.strokeStyle = 'rgba(175, 210, 110, 0.68)';
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(128, 508);
-      ctx.lineTo(128, 16);
-      ctx.stroke();
+      // Fine recessed/raised secondary veins (both color & bump)
+      for (let y = 52; y < 484; y += 16) {
+        ctx.strokeStyle = 'rgba(26, 44, 16, 0.34)';
+        ctx.lineWidth = 1.4;
+        bctx.strokeStyle = '#b8b8b8';
+        bctx.lineWidth = 2.0;
+        for (const g of [ctx, bctx]) {
+          g.beginPath();
+          g.moveTo(128, y);
+          g.quadraticCurveTo(75, y - 16, 16, y - 44);
+          g.stroke();
+          g.beginPath();
+          g.moveTo(128, y);
+          g.quadraticCurveTo(181, y - 16, 240, y - 44);
+          g.stroke();
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(110, 134, 62, 0.42)';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.moveTo(128, 508); ctx.lineTo(128, 16); ctx.stroke();
+
+      bctx.strokeStyle = '#e8e8e8';
+      bctx.lineWidth = 4.5;
+      bctx.beginPath(); bctx.moveTo(128, 508); bctx.lineTo(128, 16); bctx.stroke();
       ctx.restore();
 
-      const tex = new THREE.CanvasTexture(c);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      return tex;
+      const map = new THREE.CanvasTexture(c);
+      map.colorSpace = THREE.SRGBColorSpace;
+      const bumpMap = new THREE.CanvasTexture(b);
+      return { map, bumpMap };
     }
 
-    // High-res alpha-cutout fern frond texture (organic rounded pinnae, not polygon spikes)
+    // High-res alpha-cutout fern frond texture (organic rounded pinnae + midrib bump)
     function createFernTexture() {
       const c = document.createElement('canvas');
       c.width = 512;
       c.height = 1024;
       const ctx = c.getContext('2d');
-      ctx.clearRect(0, 0, 512, 1024);
+      const b = document.createElement('canvas');
+      b.width = 512;
+      b.height = 1024;
+      const bctx = b.getContext('2d');
 
-      // Central rachis stem
-      ctx.strokeStyle = '#3b5c1f';
-      ctx.lineWidth = 8;
-      ctx.beginPath();
-      ctx.moveTo(256, 1010);
-      ctx.lineTo(256, 20);
-      ctx.stroke();
+      ctx.clearRect(0, 0, 512, 1024);
+      bctx.fillStyle = '#707070';
+      bctx.fillRect(0, 0, 512, 1024);
+
+      ctx.strokeStyle = '#2d4518';
+      ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(256, 1010); ctx.lineTo(256, 20); ctx.stroke();
+
+      bctx.strokeStyle = '#e0e0e0';
+      bctx.lineWidth = 7;
+      bctx.beginPath(); bctx.moveTo(256, 1010); bctx.lineTo(256, 20); bctx.stroke();
 
       const pairs = 28;
       for (let i = 0; i < pairs; i++) {
@@ -961,9 +998,9 @@ float sandNoise(vec2 p) {
           const tipX = 256 + side * span;
           const tipY = y - 22 - t * 18;
           const g = ctx.createLinearGradient(256, y, tipX, tipY);
-          g.addColorStop(0, '#2a4d19');
-          g.addColorStop(0.6, '#487625');
-          g.addColorStop(1, '#7ca134');
+          g.addColorStop(0, '#223814');
+          g.addColorStop(0.6, '#38581f');
+          g.addColorStop(1, '#58752b');
 
           ctx.fillStyle = g;
           ctx.beginPath();
@@ -972,12 +1009,20 @@ float sandNoise(vec2 p) {
           ctx.quadraticCurveTo(256 + side * span * 0.45, y - w * 0.85, 256, y - w * 0.55);
           ctx.closePath();
           ctx.fill();
+
+          bctx.strokeStyle = '#b4b4b4';
+          bctx.lineWidth = 2;
+          bctx.beginPath();
+          bctx.moveTo(256, y);
+          bctx.quadraticCurveTo(256 + side * span * 0.5, y - 5, tipX, tipY);
+          bctx.stroke();
         }
       }
 
-      const tex = new THREE.CanvasTexture(c);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      return tex;
+      const map = new THREE.CanvasTexture(c);
+      map.colorSpace = THREE.SRGBColorSpace;
+      const bumpMap = new THREE.CanvasTexture(b);
+      return { map, bumpMap };
     }
 
     // Individual cupped hibiscus petal texture (ruffled edge + deep throat + radial veins)
@@ -1128,28 +1173,35 @@ float sandNoise(vec2 p) {
 
     const broadLeafTex = createBroadLeafTexture();
     const broadLeafMat = new THREE.MeshStandardMaterial({
-      map: broadLeafTex,
+      map: broadLeafTex.map,
+      bumpMap: broadLeafTex.bumpMap,
+      bumpScale: 0.045,
       color: 0x8ea35a,
       alphaTest: 0.45,
-      roughness: 0.62,
+      roughness: 0.36,
       side: THREE.DoubleSide
     });
     applyFoliageSSS(broadLeafMat, 0.45);
 
     const broadLeafLightMat = new THREE.MeshStandardMaterial({
-      map: broadLeafTex,
+      map: broadLeafTex.map,
+      bumpMap: broadLeafTex.bumpMap,
+      bumpScale: 0.045,
       color: 0xa4b86c,
       alphaTest: 0.45,
-      roughness: 0.58,
+      roughness: 0.38,
       side: THREE.DoubleSide
     });
     applyFoliageSSS(broadLeafLightMat, 0.50);
 
+    const fernTex = createFernTexture();
     const fernMat = new THREE.MeshStandardMaterial({
-      map: createFernTexture(),
+      map: fernTex.map,
+      bumpMap: fernTex.bumpMap,
+      bumpScale: 0.035,
       color: 0x94a860,
       alphaTest: 0.42,
-      roughness: 0.60,
+      roughness: 0.42,
       side: THREE.DoubleSide
     });
     applyFoliageSSS(fernMat, 0.48);
@@ -1544,9 +1596,9 @@ float sandNoise(vec2 p) {
     floretGeo.translate(0, 0, 0.032);
 
     const petalMats = [
-      new THREE.MeshStandardMaterial({ map: createPetalTexture('#6d3430', '#b8685c', '#dfa08e'), alphaTest: 0.35, roughness: 0.48, side: THREE.DoubleSide }),
-      new THREE.MeshStandardMaterial({ map: createPetalTexture('#784836', '#cc8b68', '#ecc09c'), alphaTest: 0.35, roughness: 0.48, side: THREE.DoubleSide }),
-      new THREE.MeshStandardMaterial({ map: createPetalTexture('#693b49', '#b26e7c', '#dba8b2'), alphaTest: 0.35, roughness: 0.48, side: THREE.DoubleSide })
+      new THREE.MeshStandardMaterial({ map: createPetalTexture('#542320', '#a6574c', '#d48d7b'), bumpMap: broadLeafTex.bumpMap, bumpScale: 0.025, alphaTest: 0.35, roughness: 0.42, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ map: createPetalTexture('#623626', '#ba7a58', '#dfb08c'), bumpMap: broadLeafTex.bumpMap, bumpScale: 0.025, alphaTest: 0.35, roughness: 0.42, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ map: createPetalTexture('#542937', '#a25c6b', '#cf96a2'), bumpMap: broadLeafTex.bumpMap, bumpScale: 0.025, alphaTest: 0.35, roughness: 0.42, side: THREE.DoubleSide })
     ];
     const purpleFloretMat = new THREE.MeshStandardMaterial({ color: 0x827a9c, emissive: 0x0e0b16, roughness: 0.78 });
     const purpleBudMat    = new THREE.MeshStandardMaterial({ color: 0x9890b2, emissive: 0x100d1a, roughness: 0.78 });
