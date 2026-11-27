@@ -430,15 +430,15 @@ float sandNoise(vec2 p) {
 {
   // AAA multi-scale wind-blown desert ripples in world space
   vec2 sp = vSandWorldPos.xz;
-  float warp = sandNoise(sp * 0.28) * 3.4 + sandNoise(sp * 0.85) * 1.1;
-  float distFade = clamp(1.0 - length(sp) / 95.0, 0.25, 1.0);
-  // Fine foreground/mid-ground ripples
-  float rFine = sin(sp.x * 13.5 + sp.y * 4.2 + warp * 2.2);
-  // Broad dune wind-striations visible on far slopes
-  float rBroad = sin(sp.x * 2.4 + sp.y * 0.9 + warp * 1.4);
-  float microGrain = sandNoise(sp * 42.0) - 0.5;
-  float rippleSlope = (rFine * 0.085 * distFade + rBroad * 0.065 + microGrain * 0.045) * smoothstep(0.06, 0.45, vSandWorldPos.y);
-  normal = normalize(normal + vec3(rippleSlope, 0.0, rippleSlope * 0.55));
+  float warp = sandNoise(sp * 0.24) * 3.8 + sandNoise(sp * 0.72) * 1.4;
+  float distFade = clamp(1.0 - length(sp) / 90.0, 0.18, 1.0);
+  // Crisp diagonal foreground/mid-ground ripples
+  float rFine = sin(sp.x * 16.5 - sp.y * 8.0 + warp * 2.6);
+  // Subtle contour-hugging dune wind-striations on far slopes (no corduroy striping)
+  float rBroad = sin(sp.x * 3.8 - sp.y * 5.2 + warp * 3.6);
+  float microGrain = sandNoise(sp * 48.0) - 0.5;
+  float rippleSlope = (rFine * 0.105 * distFade + rBroad * 0.028 + microGrain * 0.055) * smoothstep(0.02, 0.35, vSandWorldPos.y);
+  normal = normalize(normal + vec3(rippleSlope, 0.0, rippleSlope * 0.65));
 }`)
         .replace('#include <dithering_fragment>', `
 {
@@ -1602,6 +1602,32 @@ float sandNoise(vec2 p) {
     addAgaveRosette(1.35, 14.3, 0.92);
     addAgaveRosette(2.65, 13.5, 1.05);
 
+    // Layer 2: Dry golden desert scrub & grass tufts bridging lush banks to outer sand
+    const dryGrassMat = new THREE.MeshStandardMaterial({
+      color: 0xc2a15c,
+      roughness: 0.85,
+      metalness: 0.0,
+      side: THREE.DoubleSide
+    });
+    const dryScrubSpots = [
+      [-12.8, 6.2], [-13.4, 2.4], [-11.8, -4.8], [-8.8, -6.6],
+      [12.8, 6.0],  [13.6, 1.8],  [11.6, -4.6],  [8.6, -6.4],
+      [-6.8, 12.6], [6.8, 12.4],  [-10.2, 8.8],  [10.2, 8.6]
+    ];
+    for (const [dx, dz] of dryScrubSpots) {
+      const dy = getTerrainHeight(dx, dz) - 0.04;
+      for (let b = 0; b < 9; b++) {
+        const sc = 0.55 + rand() * 0.65;
+        pushGeo(
+          dryGrassMat,
+          grassGeo,
+          new THREE.Vector3(dx + (rand() - 0.5) * 0.8, dy, dz + (rand() - 0.5) * 0.8),
+          new THREE.Euler((rand() - 0.5) * 0.55, rand() * Math.PI * 2, (rand() - 0.5) * 0.35),
+          new THREE.Vector3(sc, sc * 0.82, sc)
+        );
+      }
+    }
+
     for (const [mat, geos] of geoBuckets.entries()) {
       const merged = mergeGeometries(geos, false);
       const mesh = new THREE.Mesh(merged, mat);
@@ -1691,6 +1717,24 @@ float sandNoise(vec2 p) {
     }
     stoneInst.instanceColor.needsUpdate = true;
     scene.add(stoneInst);
+
+    // Layer 1: Submerged river stones on the shallow underwater sandbed
+    const subStoneInst = new THREE.InstancedMesh(stoneGeo, stoneMat, 14);
+    subStoneInst.receiveShadow = true;
+    for (let i = 0; i < 14; i++) {
+      const ang = (i / 14) * Math.PI * 2 + rand() * 0.35;
+      const sx = Math.cos(ang) * (8.4 + rand() * 2.6);
+      const sz = 0.6 + Math.sin(ang) * (5.2 + rand() * 2.0);
+      const sy = getTerrainHeight(sx, sz) - 0.02;
+      stoneDummy.position.set(sx, Math.min(sy, -0.05), sz);
+      stoneDummy.rotation.set(rand() * 0.25, rand() * Math.PI * 2, rand() * 0.25);
+      stoneDummy.scale.set(0.8 + rand() * 0.9, 0.25 + rand() * 0.18, 0.8 + rand() * 0.9);
+      stoneDummy.updateMatrix();
+      subStoneInst.setMatrixAt(i, stoneDummy.matrix);
+      subStoneInst.setColorAt(i, stonePalette[(i + 1) % stonePalette.length]);
+    }
+    subStoneInst.instanceColor.needsUpdate = true;
+    scene.add(subStoneInst);
 
     // Floating fallen hibiscus petals & olive leaves resting on the calm water edge
     const floaters = [];
@@ -1790,7 +1834,10 @@ float sandNoise(vec2 p) {
     const mistConfigs = [
       { x: -6.0, y: 1.85, z: -13.0, w: 22, d: 10, rx: -Math.PI * 0.36 },
       { x:  6.0, y: 1.95, z: -14.0, w: 22, d: 10, rx: -Math.PI * 0.36 },
-      { x:  0.0, y: 2.35, z: -20.0, w: 34, d: 12, rx: -Math.PI * 0.32 }
+      { x:  0.0, y: 2.35, z: -20.0, w: 34, d: 12, rx: -Math.PI * 0.32 },
+      // Layer 4: Subtle wind-blown sand-dust wisps skimming distant dune crests
+      { x: -12.0, y: 4.8, z: -38.0, w: 38, d: 10, rx: -Math.PI * 0.22 },
+      { x:  14.0, y: 5.2, z: -42.0, w: 38, d: 10, rx: -Math.PI * 0.22 }
     ];
     for (const mc of mistConfigs) {
       const mMesh = new THREE.Mesh(new THREE.PlaneGeometry(mc.w, mc.d), mistMat);
