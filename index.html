@@ -404,7 +404,7 @@
       roughness: 0.90,
       metalness: 0.0,
       bumpMap: sandBumpTex,
-      bumpScale: 0.18
+      bumpScale: 0.04
     });
     terrainMat.onBeforeCompile = (shader) => {
       shader.uniforms.uSunDirSand = { value: sunDir };
@@ -1218,14 +1218,16 @@ float sandNoise(vec2 p) {
         new THREE.Vector3(tipX, height, tipZ)
       ]);
 
-      const trunkGeo = new THREE.TubeGeometry(curve, 26, 0.25 * scale, 12, false);
+      const trunkGeo = new THREE.TubeGeometry(curve, 44, 0.24 * scale, 12, false);
       const tp = trunkGeo.attributes.position;
       const v = new THREE.Vector3();
       for (let i = 0; i < tp.count; i++) {
         v.fromBufferAttribute(tp, i);
         const t = THREE.MathUtils.clamp(v.y / height, 0, 1);
         const cPt = curve.getPoint(t);
-        v.sub(cPt).multiplyScalar(1.0 - t * 0.50).add(cPt);
+        const rootFlare = 0.48 * Math.exp(-t * 14.0);
+        const ringRidge = Math.sin(t * 115.0) * 0.045 * (1.0 - t * 0.4);
+        v.sub(cPt).multiplyScalar((1.0 - t * 0.48 + rootFlare + ringRidge)).add(cPt);
         tp.setXYZ(i, v.x, v.y, v.z);
       }
       trunkGeo.computeVertexNormals();
@@ -1452,8 +1454,9 @@ float sandNoise(vec2 p) {
     pistilGeo.translate(0, 0.065, 0);
     const pistilMat = new THREE.MeshStandardMaterial({ color: 0xfff0aa, emissive: 0x442200, roughness: 0.4 });
 
-    const floretGeo = new THREE.SphereGeometry(0.042, 6, 5);
-    floretGeo.scale(1.0, 0.75, 1.25);
+    const floretGeo = new THREE.ConeGeometry(0.026, 0.068, 5);
+    floretGeo.rotateX(Math.PI * 0.36);
+    floretGeo.translate(0, 0, 0.032);
 
     const petalMats = [
       new THREE.MeshStandardMaterial({ map: createPetalTexture('#6d3430', '#b8685c', '#dfa08e'), alphaTest: 0.35, roughness: 0.48, side: THREE.DoubleSide }),
@@ -1787,6 +1790,7 @@ float sandNoise(vec2 p) {
     ];
     const stoneDummy = new THREE.Object3D();
     let contactIdx = 0;
+    let stoneCount = 0;
     for (let i = 0; i < 48; i++) {
       const ang = (i / 48) * Math.PI * 2 + rand() * 0.20;
       if (Math.sin(ang) > 0.35 && Math.abs(Math.cos(ang)) < 0.65) continue;
@@ -1799,18 +1803,21 @@ float sandNoise(vec2 p) {
       stoneDummy.rotation.set(rand() * 0.35, rand() * Math.PI * 2, rand() * 0.35);
       stoneDummy.scale.set(0.65 + rand() * 0.95, 0.28 + rand() * 0.24, 0.65 + rand() * 0.90);
       stoneDummy.updateMatrix();
-      stoneInst.setMatrixAt(i, stoneDummy.matrix);
-      stoneInst.setColorAt(i, stonePalette[i % stonePalette.length]);
+      stoneInst.setMatrixAt(stoneCount, stoneDummy.matrix);
+      stoneInst.setColorAt(stoneCount, stonePalette[i % stonePalette.length]);
+      stoneCount++;
       if (sy < 0.08 && contactIdx < 8) {
         waterContactPts[contactIdx++].set(sx, sz, 0.16);
       }
     }
+    stoneInst.count = stoneCount;
     stoneInst.instanceColor.needsUpdate = true;
     scene.add(stoneInst);
 
     // Layer 1: Submerged river stones on the shallow underwater sandbed
     const subStoneInst = new THREE.InstancedMesh(stoneGeo, stoneMat, 14);
     subStoneInst.receiveShadow = true;
+    let subStoneCount = 0;
     for (let i = 0; i < 14; i++) {
       const ang = (i / 14) * Math.PI * 2 + rand() * 0.35;
       if (Math.sin(ang) > 0.25 && Math.abs(Math.cos(ang)) < 0.72) continue;
@@ -1822,12 +1829,14 @@ float sandNoise(vec2 p) {
       stoneDummy.rotation.set(rand() * 0.25, rand() * Math.PI * 2, rand() * 0.25);
       stoneDummy.scale.set(0.8 + rand() * 0.9, 0.25 + rand() * 0.18, 0.8 + rand() * 0.9);
       stoneDummy.updateMatrix();
-      subStoneInst.setMatrixAt(i, stoneDummy.matrix);
-      subStoneInst.setColorAt(i, stonePalette[(i + 1) % stonePalette.length]);
+      subStoneInst.setMatrixAt(subStoneCount, stoneDummy.matrix);
+      subStoneInst.setColorAt(subStoneCount, stonePalette[(i + 1) % stonePalette.length]);
+      subStoneCount++;
       if (contactIdx < 10) {
         waterContactPts[contactIdx++].set(sx, sz, 0.18);
       }
     }
+    subStoneInst.count = subStoneCount;
     subStoneInst.instanceColor.needsUpdate = true;
     scene.add(subStoneInst);
 
