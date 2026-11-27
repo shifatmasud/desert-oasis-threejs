@@ -67,8 +67,8 @@
     const camera = new THREE.PerspectiveCamera(
       48,
       window.innerWidth / window.innerHeight,
-      0.15,
-      450
+      0.4,
+      320
     );
     camera.position.set(0, 3.15, 17.8);
 
@@ -791,12 +791,15 @@ float sandNoise(vec2 p) {
     const waterGeo = new THREE.CircleGeometry(17.5, 128);
     waterGeo.scale(1.0, 0.68, 1.0);
     const waterReflector = new Reflector(waterGeo, {
-      clipBias: 0.003,
-      textureWidth: 1024,
-      textureHeight: 1024,
+      clipBias: 0.004,
+      textureWidth: 768,
+      textureHeight: 768,
       shader: waterShader
     });
     waterReflector.material.transparent = true;
+    waterReflector.material.polygonOffset = true;
+    waterReflector.material.polygonOffsetFactor = -1;
+    waterReflector.material.polygonOffsetUnits = -1;
     waterReflector.rotation.x = -Math.PI / 2;
     waterReflector.position.set(0, 0.02, 0.6);
     scene.add(waterReflector);
@@ -1779,57 +1782,8 @@ float sandNoise(vec2 p) {
     }
 
     // ------------------------------------------------------------
-    // 9. Volumetric God Rays, Shoreline Stones & Ambient Life
+    // 9. Shoreline Stones & Ambient Life (screen-space sun-shafts handle rays with zero overdraw)
     // ------------------------------------------------------------
-    const godRayMat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-      uniforms: { uTime: { value: 0 } },
-      vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormalW;
-        varying vec3 vViewDir;
-        void main() {
-          vUv = uv;
-          vec4 wp = modelMatrix * vec4(position, 1.0);
-          vNormalW = normalize(mat3(modelMatrix) * normal);
-          vViewDir = normalize(cameraPosition - wp.xyz);
-          gl_Position = projectionMatrix * viewMatrix * wp;
-        }
-      `,
-      fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormalW;
-        varying vec3 vViewDir;
-        uniform float uTime;
-        void main() {
-          float edgeX = sin(vUv.x * 3.14159265);
-          edgeX = pow(max(0.0001, edgeX), 1.8);
-          float fadeY = smoothstep(0.0, 0.38, vUv.y) * smoothstep(1.0, 0.15, vUv.y);
-          float streak = 0.65 + 0.35 * sin(vUv.x * 18.0 + uTime * 0.45) * cos(vUv.x * 9.0 - uTime * 0.3);
-          float facing = pow(max(0.0001, abs(dot(normalize(vNormalW), normalize(vViewDir)))), 0.65);
-          float alpha = edgeX * fadeY * streak * facing * 0.135;
-          gl_FragColor = vec4(1.0, 0.82, 0.48, alpha);
-        }
-      `
-    });
-
-    const raySpecs = [
-      { x: -7.5, y: 7.2, z: -2.0, w: 6.5, h: 18.0, ry: 0.35, rz: -0.78 },
-      { x: -4.2, y: 7.6, z: -4.5, w: 7.5, h: 19.5, ry: 0.22, rz: -0.75 },
-      { x: -1.5, y: 8.0, z: -6.0, w: 8.0, h: 20.0, ry: 0.10, rz: -0.74 },
-      { x: -8.8, y: 6.4, z:  4.0, w: 5.5, h: 16.5, ry: 0.48, rz: -0.80 },
-      { x: -5.2, y: 6.8, z:  2.2, w: 6.2, h: 17.5, ry: 0.28, rz: -0.76 },
-      { x:  1.2, y: 8.2, z: -7.5, w: 7.0, h: 19.0, ry: -0.05, rz: -0.72 }
-    ];
-    for (const rs of raySpecs) {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(rs.w, rs.h), godRayMat);
-      mesh.position.set(rs.x, rs.y, rs.z);
-      mesh.rotation.set(0, rs.ry, rs.rz);
-      scene.add(mesh);
-    }
 
     // Smooth sun-warmed oasis shoreline stones
     const stoneGeo = new THREE.DodecahedronGeometry(0.14, 1);
@@ -1921,9 +1875,9 @@ float sandNoise(vec2 p) {
     floaterGeo.scale(1.5, 0.75, 1.0);
     floaterGeo.rotateX(-Math.PI / 2);
     const floaterMats = [
-      new THREE.MeshStandardMaterial({ color: 0xd9846c, roughness: 0.58, side: THREE.DoubleSide }),
-      new THREE.MeshStandardMaterial({ color: 0x9aa854, roughness: 0.58, side: THREE.DoubleSide }),
-      new THREE.MeshStandardMaterial({ color: 0xe8b288, roughness: 0.58, side: THREE.DoubleSide })
+      new THREE.MeshStandardMaterial({ color: 0xd9846c, roughness: 0.58, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+      new THREE.MeshStandardMaterial({ color: 0x9aa854, roughness: 0.58, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+      new THREE.MeshStandardMaterial({ color: 0xe8b288, roughness: 0.58, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
     ];
     floaterMats.forEach((fm) => applyFoliageSSS(fm, 0.55));
     for (let i = 0; i < 16; i++) {
@@ -1932,7 +1886,7 @@ float sandNoise(vec2 p) {
       const fx = Math.cos(a) * 11.8 * r;
       const fz = 0.6 + Math.sin(a) * 7.8 * r;
       const fm = new THREE.Mesh(floaterGeo, floaterMats[i % floaterMats.length]);
-      fm.position.set(fx, 0.026, fz);
+      fm.position.set(fx, 0.036, fz);
       fm.rotation.y = rand() * Math.PI * 2;
       fm.scale.setScalar(0.75 + rand() * 0.7);
       scene.add(fm);
@@ -2015,12 +1969,8 @@ float sandNoise(vec2 p) {
       `
     });
     const mistConfigs = [
-      { x: -6.0, y: 1.85, z: -13.0, w: 22, d: 10, rx: -Math.PI * 0.36 },
-      { x:  6.0, y: 1.95, z: -14.0, w: 22, d: 10, rx: -Math.PI * 0.36 },
       { x:  0.0, y: 2.35, z: -20.0, w: 34, d: 12, rx: -Math.PI * 0.32 },
-      // Layer 4: Subtle wind-blown sand-dust wisps skimming distant dune crests
-      { x: -12.0, y: 4.8, z: -38.0, w: 38, d: 10, rx: -Math.PI * 0.22 },
-      { x:  14.0, y: 5.2, z: -42.0, w: 38, d: 10, rx: -Math.PI * 0.22 }
+      { x:  0.0, y: 5.0,  z: -40.0, w: 48, d: 11, rx: -Math.PI * 0.22 }
     ];
     for (const mc of mistConfigs) {
       const mMesh = new THREE.Mesh(new THREE.PlaneGeometry(mc.w, mc.d), mistMat);
@@ -2088,7 +2038,6 @@ float sandNoise(vec2 p) {
       waterReflector.material.uniforms.uTime.value = t;
       moteMat.uniforms.uTime.value = t;
       mistMat.uniforms.uTime.value = t;
-      godRayMat.uniforms.uTime.value = t;
       animeFilmicPass.uniforms.uTime.value = t;
 
       for (const fl of flyers) {
