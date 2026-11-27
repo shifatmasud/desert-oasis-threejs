@@ -460,11 +460,12 @@ float sandNoise(vec2 p) {
   gl_FragColor.rgb += vec3(0.24, 0.13, 0.04) * sandSSS * 0.45;
   float rimSand = pow(1.0 - max(dot(normal, vDir), 0.0), 3.0) * sunFace * smoothstep(1.0, 6.0, vSandWorldPos.y);
   gl_FragColor.rgb += vec3(0.28, 0.16, 0.05) * rimSand;
-  // Caustic bounce reflection projected onto wet shoreline sand just above water
-  float shoreBounceZone = smoothstep(0.005, 0.05, vSandWorldPos.y) * smoothstep(0.28, 0.04, vSandWorldPos.y);
-  float cBounce = sin(vSandWorldPos.x * 5.2 + uSandTime * 1.4 + sin(vSandWorldPos.z * 4.5 - uSandTime)) * 0.5 + 0.5;
-  cBounce = pow(cBounce, 3.0);
-  gl_FragColor.rgb += vec3(0.18, 0.34, 0.30) * cBounce * shoreBounceZone * 0.26;
+  // Caustic bounce reflection projected ONLY onto the immediate 10cm wet waterline rim
+  float basinMask = smoothstep(1.18, 0.92, length(vec2(vSandWorldPos.x / 13.5, (vSandWorldPos.z - 0.6) / 9.2)));
+  float shoreBounceZone = smoothstep(0.005, 0.03, vSandWorldPos.y) * smoothstep(0.11, 0.025, vSandWorldPos.y) * basinMask;
+  float cBounce = sin(vSandWorldPos.x * 11.5 + uSandTime * 1.4 + sin(vSandWorldPos.z * 9.5 - uSandTime)) * 0.5 + 0.5;
+  cBounce = pow(cBounce, 4.0);
+  gl_FragColor.rgb += vec3(0.16, 0.30, 0.26) * cBounce * shoreBounceZone * 0.18;
 }
 #include <dithering_fragment>`);
     };
