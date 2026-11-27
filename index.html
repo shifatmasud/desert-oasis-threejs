@@ -175,7 +175,7 @@
     sunLight.shadow.normalBias = 0.05;
     scene.add(sunLight);
 
-    const bounceLight = new THREE.DirectionalLight(0xffcfa0, 0.95);
+    const bounceLight = new THREE.DirectionalLight(0xffd6a8, 1.28);
     bounceLight.position.set(18, 12, 32);
     scene.add(bounceLight);
 
@@ -343,10 +343,10 @@
     const tPos = terrainGeo.attributes.position;
     const tColors = new Float32Array(tPos.count * 3);
 
-    const deepWetSand = new THREE.Color(0x886440);
-    const wetSand = new THREE.Color(0xc89a64);
-    const warmSand = new THREE.Color(0xf0ca8e);
-    const sunlitSand = new THREE.Color(0xfce6b8);
+    const deepWetSand = new THREE.Color(0x9a724a);
+    const wetSand = new THREE.Color(0xd6ab74);
+    const warmSand = new THREE.Color(0xf5d69c);
+    const sunlitSand = new THREE.Color(0xfdeac0);
     const cTmp = new THREE.Color();
 
     // Plant cluster centers for soft ground contact AO under bushes & palms
@@ -690,7 +690,7 @@ float sandNoise(vec2 p) {
           float NdotL = max(dot(N, uSunDir), 0.0);
           float specSharp = D_GGX(NdotH, 0.015) * fresnel * NdotL;
           float specBroad = D_GGX(NdotH, 0.12) * fresnel * NdotL;
-          col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.28, 1.2) + min(specBroad * 0.16, 0.35));
+          col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.12, 0.45) + min(specBroad * 0.16, 0.35));
 
           float foamNoise = vnoise(p * 2.8 + vec2(uTime * 0.10, -uTime * 0.08));
           float lap = smoothstep(0.075, 0.012, depth + foamNoise * 0.016) * smoothstep(0.004, 0.024, depth);
