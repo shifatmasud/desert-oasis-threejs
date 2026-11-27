@@ -395,16 +395,68 @@
     sandBumpTex.repeat.set(36, 36);
     sandBumpTex.anisotropy = 4;
 
-    const terrain = new THREE.Mesh(
-      terrainGeo,
-      new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.92,
-        metalness: 0.0,
-        bumpMap: sandBumpTex,
-        bumpScale: 0.14
-      })
-    );
+    const terrainMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.90,
+      metalness: 0.0,
+      bumpMap: sandBumpTex,
+      bumpScale: 0.18
+    });
+    terrainMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSunDirSand = { value: sunDir };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vSandWorldPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSandWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+varying vec3 vSandWorldPos;
+uniform vec3 uSunDirSand;
+float sandHash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float sandNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(sandHash(i), sandHash(i + vec2(1.0, 0.0)), f.x),
+    mix(sandHash(i + vec2(0.0, 1.0)), sandHash(i + vec2(1.0, 1.0)), f.x),
+    f.y
+  );
+}`)
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{
+  // AAA multi-scale wind-blown desert ripples in world space
+  vec2 sp = vSandWorldPos.xz;
+  float warp = sandNoise(sp * 0.28) * 3.4 + sandNoise(sp * 0.85) * 1.1;
+  float distFade = clamp(1.0 - length(sp) / 95.0, 0.25, 1.0);
+  // Fine foreground/mid-ground ripples
+  float rFine = sin(sp.x * 13.5 + sp.y * 4.2 + warp * 2.2);
+  // Broad dune wind-striations visible on far slopes
+  float rBroad = sin(sp.x * 2.4 + sp.y * 0.9 + warp * 1.4);
+  float microGrain = sandNoise(sp * 42.0) - 0.5;
+  float rippleSlope = (rFine * 0.085 * distFade + rBroad * 0.065 + microGrain * 0.045) * smoothstep(0.06, 0.45, vSandWorldPos.y);
+  normal = normalize(normal + vec3(rippleSlope, 0.0, rippleSlope * 0.55));
+}`)
+        .replace('#include <dithering_fragment>', `
+{
+  // Warm golden-hour crest scatter + subtle quartz silica grain sparkle
+  vec3 vDir = normalize(cameraPosition - vSandWorldPos);
+  vec3 hDir = normalize(uSunDirSand + vDir);
+  float grainCell = sandHash(floor(vSandWorldPos.xz * 78.0));
+  float sparkle = step(0.965, grainCell) * pow(max(dot(normal, hDir), 0.0), 42.0) * smoothstep(0.15, 0.6, vSandWorldPos.y);
+  float sunFace = clamp(dot(normal, uSunDirSand), 0.0, 1.0);
+  gl_FragColor.rgb += vec3(1.0, 0.88, 0.62) * sparkle * 0.28 * sunFace;
+  // Warm honey-gold velvet sheen on sunlit dune crests
+  float rimSand = pow(1.0 - max(dot(normal, vDir), 0.0), 3.0) * sunFace * smoothstep(1.0, 6.0, vSandWorldPos.y);
+  gl_FragColor.rgb += vec3(0.28, 0.16, 0.05) * rimSand;
+}
+#include <dithering_fragment>`);
+    };
+
+    const terrain = new THREE.Mesh(terrainGeo, terrainMat);
     terrain.receiveShadow = true;
     terrain.castShadow = false;
     scene.add(terrain);
@@ -566,10 +618,10 @@
           vec3 causticRGB = vec3(cR * 1.04, cG * 0.98, cB * 0.88) * causticMask * 0.38;
           vec3 sandFloor = sandBed + causticRGB;
 
-          // Deep tranquil mineral-emerald scatter
+          // Luminous oasis turquoise-emerald scatter
           float sssAngle = pow(max(dot(V, -uSunDir), 0.0), 3.5);
           float waveSlope = clamp(length(grad) * 24.0, 0.0, 1.0);
-          vec3 scatterCol = vec3(0.018, 0.11, 0.12) + vec3(0.04, 0.14, 0.11) * (sssAngle * 0.45 + waveSlope * 0.18);
+          vec3 scatterCol = vec3(0.025, 0.17, 0.17) + vec3(0.05, 0.20, 0.16) * (sssAngle * 0.45 + waveSlope * 0.18);
           vec3 refractedCol = sandFloor * transmittance + scatterCol * (1.0 - transmittance);
 
           // Shoreline capillary meniscus & seamless wet-sand transition
