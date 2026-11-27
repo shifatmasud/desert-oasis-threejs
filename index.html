@@ -76,7 +76,7 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 0.96;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.appendChild(renderer.domElement);
@@ -182,19 +182,19 @@
           }
 
           // Screen-space crepuscular sun-shafts streaming between palm fronds
-          vec2 rayStep = (uSunScreenPos - vUv) * (0.45 / 10.0);
+          vec2 rayStep = (uSunScreenPos - vUv) * (0.52 / 14.0);
           vec2 rayUv = vUv;
           float shafts = 0.0;
           float decay = 1.0;
-          for (int i = 0; i < 10; i++) {
+          for (int i = 0; i < 14; i++) {
             rayUv += rayStep;
             vec3 sCol = texture2D(tDiffuse, clamp(rayUv, 0.001, 0.999)).rgb;
             float sLum = dot(sCol, vec3(0.2126, 0.7152, 0.0722));
-            shafts += smoothstep(0.70, 0.96, sLum) * decay;
-            decay *= 0.84;
+            shafts += smoothstep(0.66, 0.94, sLum) * decay;
+            decay *= 0.86;
           }
-          float sunProx = exp(-length((vUv - uSunScreenPos) * vec2(1.0, 1.4)) * 1.8);
-          col += vec3(1.0, 0.84, 0.56) * (shafts / 10.0) * sunProx * 0.24;
+          float sunProx = exp(-length((vUv - uSunScreenPos) * vec2(1.0, 1.35)) * 1.45);
+          col += vec3(1.0, 0.84, 0.56) * (shafts / 14.0) * sunProx * 0.42;
 
           // Unified golden-hour sunset color grade (lifts crushed black shadows into warm plum)
           float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
@@ -517,7 +517,7 @@ float sandNoise(vec2 p) {
   float rFine = sin(sp.x * 14.0 - sp.y * 6.5 + warp * 3.2) * (0.35 + 0.65 * fgFade);
   float rBroad = sin(sp.x * 3.8 - sp.y * 5.2 + warp * 3.6);
   float microGrain = sandNoise(sp * 56.0) - 0.5;
-  float rippleSlope = (rFine * 0.018 * distFade + rBroad * 0.009 + microGrain * 0.055) * smoothstep(0.02, 0.35, vSandWorldPos.y);
+  float rippleSlope = (rFine * 0.036 * distFade + rBroad * 0.018 + microGrain * 0.090) * smoothstep(0.02, 0.35, vSandWorldPos.y);
   normal = normalize(normal + vec3(rippleSlope, 0.0, rippleSlope * 0.65));
 }`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -529,9 +529,9 @@ float sandNoise(vec2 p) {
   vec3 vDir = normalize(cameraPosition - vSandWorldPos);
   vec3 hDir = normalize(uSunDirSand + vDir);
   float grainCell = sandHash(floor(vSandWorldPos.xz * 78.0));
-  float sparkle = step(0.965, grainCell) * pow(max(dot(normal, hDir), 0.0), 42.0) * smoothstep(0.15, 0.6, vSandWorldPos.y);
+  float sparkle = step(0.958, grainCell) * pow(max(dot(normal, hDir), 0.0), 38.0) * smoothstep(0.15, 0.6, vSandWorldPos.y);
   float sunFace = clamp(dot(normal, uSunDirSand), 0.0, 1.0);
-  gl_FragColor.rgb += vec3(1.0, 0.88, 0.62) * sparkle * 0.28 * sunFace;
+  gl_FragColor.rgb += vec3(1.0, 0.88, 0.62) * sparkle * 0.44 * sunFace;
   // Subsurface forward/wrap sand scatter on sunlit dune crests
   float sandSSS = pow(clamp(dot(vDir, -uSunDirSand) * 0.5 + 0.5, 0.0, 1.0), 2.4) * smoothstep(0.6, 5.5, vSandWorldPos.y);
   gl_FragColor.rgb += vec3(0.24, 0.13, 0.04) * sandSSS * 0.45;
@@ -543,7 +543,7 @@ float sandNoise(vec2 p) {
   float frontGap = smoothstep(1.8, 4.8, abs(vSandWorldPos.x)) + smoothstep(10.5, 4.0, vSandWorldPos.z);
   float backGap = smoothstep(2.2, 5.5, abs(vSandWorldPos.x)) + smoothstep(-5.0, 2.0, vSandWorldPos.z);
   float bankShade = clamp(bankRing * bankOuter * clamp(frontGap, 0.0, 1.0) * clamp(backGap, 0.0, 1.0), 0.0, 1.0);
-  gl_FragColor.rgb *= mix(1.0, 0.56, bankShade * 0.72);
+  gl_FragColor.rgb *= mix(vec3(1.0), vec3(0.46, 0.34, 0.24), bankShade * 0.85);
   // Caustic bounce reflection projected ONLY onto the immediate 10cm wet waterline rim
   float basinMask = smoothstep(1.18, 0.92, length(vec2(vSandWorldPos.x / 13.5, (vSandWorldPos.z - 0.6) / 9.2)));
   float shoreBounceZone = smoothstep(0.005, 0.03, vSandWorldPos.y) * smoothstep(0.11, 0.025, vSandWorldPos.y) * basinMask;
@@ -757,7 +757,7 @@ float sandNoise(vec2 p) {
           refractedCol = mix(refractedCol, vec3(0.58, 0.45, 0.29), meniscus * 0.62);
 
           vec4 projUv = vUv;
-          projUv.xy += vec2(N.x * 0.042, N.z * 0.095) * projUv.w;
+          projUv.xy += vec2(N.x * 0.062, N.z * 0.13) * projUv.w;
           vec3 reflCol = texture2DProj(tDiffuse, projUv).rgb * 0.88;
 
           float reflWeight = clamp(fresnel * 1.05 + 0.06, 0.06, 0.62);
@@ -767,13 +767,17 @@ float sandNoise(vec2 p) {
           vec3 H = normalize(uSunDir + V);
           float NdotH = max(dot(N, H), 0.0);
           float NdotL = max(dot(N, uSunDir), 0.0);
-          float specSharp = D_GGX(NdotH, 0.015) * fresnel * NdotL;
-          float specBroad = D_GGX(NdotH, 0.12) * fresnel * NdotL;
-          col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.12, 0.45) + min(specBroad * 0.16, 0.35));
+          float specSharp = D_GGX(NdotH, 0.014) * fresnel * NdotL;
+          float specBroad = D_GGX(NdotH, 0.11) * fresnel * NdotL;
+          col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.22, 0.55) + min(specBroad * 0.20, 0.38));
 
-          float foamNoise = vnoise(p * 2.8 + vec2(uTime * 0.10, -uTime * 0.08));
-          float lap = smoothstep(0.075, 0.012, depth + foamNoise * 0.016) * smoothstep(0.004, 0.024, depth);
-          col = mix(col, vec3(0.92, 0.94, 0.92), lap * 0.48);
+          // Delicate multi-octave lacy shoreline foam hugging the water edge
+          float foamN1 = vnoise(p * 4.5 + vec2(uTime * 0.08, -uTime * 0.06));
+          float foamN2 = vnoise(p * 12.5 - vec2(uTime * 0.05, uTime * 0.09));
+          float foamLace = smoothstep(0.32, 0.74, foamN1 * 0.6 + foamN2 * 0.4);
+          float wavePulse = 0.5 + 0.5 * sin(depth * 42.0 - uTime * 1.4 + foamN1 * 3.0);
+          float lap = smoothstep(0.115, 0.008, depth + foamN1 * 0.025) * smoothstep(0.003, 0.022, depth);
+          col = mix(col, vec3(0.98, 0.96, 0.92), lap * (0.45 + 0.45 * foamLace * wavePulse));
 
           // Water-contact optics: subtle capillary meniscus + contact AO around stones & floaters
           for (int i = 0; i < 12; i++) {
@@ -2035,8 +2039,8 @@ float sandNoise(vec2 p) {
           p.y += sin(uTime * 0.45 + aPhase) * 0.28;
           p.x += cos(uTime * 0.30 + aPhase * 1.3) * 0.25;
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          gl_PointSize = (9.5 / -mv.z) * (0.60 + 0.40 * sin(uTime * 1.6 + aPhase));
-          vAlpha = 0.22 + 0.28 * sin(uTime * 1.3 + aPhase);
+          gl_PointSize = (16.5 / -mv.z) * (0.65 + 0.35 * sin(uTime * 1.6 + aPhase));
+          vAlpha = 0.38 + 0.36 * sin(uTime * 1.3 + aPhase);
           gl_Position = projectionMatrix * mv;
         }
       `,
