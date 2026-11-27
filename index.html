@@ -552,13 +552,18 @@ float sandNoise(vec2 p) {
   gl_FragColor.rgb += vec3(0.24, 0.13, 0.04) * sandSSS * 0.45;
   float rimSand = pow(1.0 - max(dot(normal, vDir), 0.0), 3.0) * sunFace * smoothstep(1.0, 6.0, vSandWorldPos.y);
   gl_FragColor.rgb += vec3(0.28, 0.16, 0.05) * rimSand;
-  // Per-pixel soft ground contact AO under vegetation banks & palm bases (unifies foliage into sand)
-  float bankRing = smoothstep(1.12, 0.88, length(vec2(vSandWorldPos.x / 12.6, (vSandWorldPos.z - 0.6) / 8.4)));
-  float bankOuter = smoothstep(0.86, 1.08, length(vec2(vSandWorldPos.x / 12.6, (vSandWorldPos.z - 0.6) / 8.4)));
+  // Soft warm-umber ground contact AO under vegetation banks (never harsh dark mud)
+  float bankRing = smoothstep(1.16, 0.88, length(vec2(vSandWorldPos.x / 12.6, (vSandWorldPos.z - 0.6) / 8.4)));
+  float bankOuter = smoothstep(0.84, 1.12, length(vec2(vSandWorldPos.x / 12.6, (vSandWorldPos.z - 0.6) / 8.4)));
   float frontGap = smoothstep(1.8, 4.8, abs(vSandWorldPos.x)) + smoothstep(10.5, 4.0, vSandWorldPos.z);
   float backGap = smoothstep(2.2, 5.5, abs(vSandWorldPos.x)) + smoothstep(-5.0, 2.0, vSandWorldPos.z);
   float bankShade = clamp(bankRing * bankOuter * clamp(frontGap, 0.0, 1.0) * clamp(backGap, 0.0, 1.0), 0.0, 1.0);
-  gl_FragColor.rgb *= mix(vec3(1.0), vec3(0.46, 0.34, 0.24), bankShade * 0.85);
+  gl_FragColor.rgb *= mix(vec3(1.0), vec3(0.72, 0.56, 0.42), bankShade * 0.46);
+  // Soft height-based golden valley mist hugging the distant dune base (zero intersecting plane seams)
+  float valleyDist = smoothstep(13.0, 32.0, length(vSandWorldPos.xz));
+  float valleyH = exp(-max(vSandWorldPos.y - 0.2, 0.0) * 0.34);
+  float valleyMist = valleyDist * valleyH * 0.24;
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.95, 0.83, 0.72), valleyMist);
   // Caustic bounce reflection projected ONLY onto the immediate 10cm wet waterline rim
   float basinMask = smoothstep(1.18, 0.92, length(vec2(vSandWorldPos.x / 13.5, (vSandWorldPos.z - 0.6) / 9.2)));
   float shoreBounceZone = smoothstep(0.005, 0.03, vSandWorldPos.y) * smoothstep(0.11, 0.025, vSandWorldPos.y) * basinMask;
@@ -1211,7 +1216,9 @@ float sandNoise(vec2 p) {
           vec3 vDirL = normalize(cameraPosition - vWorldPosLeaf);
           float backL = pow(clamp(dot(vDirL, -uSunDir), 0.0, 1.0), 2.4);
           float sunUp = clamp(dot(normalize(vNormal), uSunDir) * 0.5 + 0.5, 0.0, 1.0);
+          float groundBounce = smoothstep(0.55, -0.05, vWorldPosLeaf.y);
           gl_FragColor.rgb += vec3(0.95, 0.74, 0.28) * diffuseColor.rgb * (backL * ${strength.toFixed(2)} + sunUp * 0.16) + vec3(0.11, 0.08, 0.05) * diffuseColor.rgb;
+          gl_FragColor.rgb += vec3(0.24, 0.16, 0.08) * groundBounce * (0.35 + 0.65 * diffuseColor.rgb);
           #include <dithering_fragment>
           `
         );
@@ -2141,16 +2148,16 @@ float sandNoise(vec2 p) {
         }
         void main() {
           vec2 centered = vUv - 0.5;
-          float radial = smoothstep(0.50, 0.08, length(centered));
-          float n = fbm(vUv * vec2(3.2, 2.0) + vec2(uTime * 0.025, -uTime * 0.01));
-          float alpha = radial * smoothstep(0.32, 0.78, n) * 0.135;
-          gl_FragColor = vec4(0.98, 0.91, 0.82, alpha);
+          float radial = smoothstep(0.48, 0.02, length(centered)) * smoothstep(-0.48, 0.12, centered.y);
+          float n = fbm(vUv * vec2(2.6, 1.8) + vec2(uTime * 0.022, -uTime * 0.008));
+          float alpha = radial * smoothstep(0.28, 0.82, n) * 0.042;
+          gl_FragColor = vec4(0.98, 0.89, 0.80, alpha);
         }
       `
     });
     const mistConfigs = [
-      { x:  0.0, y: 1.55, z: -14.0, w: 32, d: 9,  rx: -Math.PI * 0.34 },
-      { x:  0.0, y: 5.0,  z: -40.0, w: 48, d: 11, rx: -Math.PI * 0.22 }
+      { x:  0.0, y: 3.4, z: -18.0, w: 34, d: 8,  rx: -Math.PI * 0.16 },
+      { x:  0.0, y: 6.8, z: -44.0, w: 52, d: 10, rx: -Math.PI * 0.10 }
     ];
     for (const mc of mistConfigs) {
       const mMesh = new THREE.Mesh(new THREE.PlaneGeometry(mc.w, mc.d), mistMat);
