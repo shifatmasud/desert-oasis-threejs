@@ -72,9 +72,10 @@
     );
     camera.position.set(0, 3.15, 17.8);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+    const isPhone = /Mobi|Android/i.test(navigator.userAgent) || window.innerWidth <= 820;
+    const renderer = new THREE.WebGLRenderer({ antialias: !isPhone, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(1.0);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.96;
     renderer.shadowMap.enabled = true;
@@ -167,10 +168,16 @@
         }
 
         void main() {
-          // Subtle 65mm cinema edge softness
+          // Subtle 65mm cinema edge softness + micro chromatic fringe at extreme corners
           vec2 d = vUv - 0.5;
-          float edgeSoft = smoothstep(0.28, 0.72, length(d)) * 0.0014;
-          vec3 col = texture2D(tDiffuse, vUv).rgb;
+          float rLen = length(d);
+          float edgeSoft = smoothstep(0.28, 0.72, rLen) * 0.0014;
+          float ca = smoothstep(0.42, 0.76, rLen) * 0.0009;
+          vec3 col = vec3(
+            texture2D(tDiffuse, vUv + d * ca).r,
+            texture2D(tDiffuse, vUv).g,
+            texture2D(tDiffuse, vUv - d * ca).b
+          );
           if (edgeSoft > 0.00005) {
             col = (
               col * 0.4 +
@@ -181,8 +188,9 @@
             );
           }
 
-          // Screen-space crepuscular sun-shafts streaming between palm fronds
-          vec2 rayStep = (uSunScreenPos - vUv) * (0.52 / 14.0);
+          // Screen-space crepuscular sun-shafts streaming between left palm fronds
+          vec2 clampedSun = vec2(max(uSunScreenPos.x, 0.06), clamp(uSunScreenPos.y, 0.68, 0.88));
+          vec2 rayStep = (clampedSun - vUv) * (0.55 / 14.0);
           vec2 rayUv = vUv;
           float shafts = 0.0;
           float decay = 1.0;
@@ -190,11 +198,15 @@
             rayUv += rayStep;
             vec3 sCol = texture2D(tDiffuse, clamp(rayUv, 0.001, 0.999)).rgb;
             float sLum = dot(sCol, vec3(0.2126, 0.7152, 0.0722));
-            shafts += smoothstep(0.66, 0.94, sLum) * decay;
-            decay *= 0.86;
+            shafts += smoothstep(0.62, 0.92, sLum) * decay;
+            decay *= 0.87;
           }
-          float sunProx = exp(-length((vUv - uSunScreenPos) * vec2(1.0, 1.35)) * 1.45);
-          col += vec3(1.0, 0.84, 0.56) * (shafts / 14.0) * sunProx * 0.42;
+          float sunProx = exp(-length((vUv - clampedSun) * vec2(0.85, 1.25)) * 1.35);
+          col += vec3(1.0, 0.82, 0.50) * (shafts / 14.0) * sunProx * 0.48;
+
+          // Subtle golden-hour anamorphic streak from upper-left sun
+          float anamorphic = exp(-abs(vUv.y - clampedSun.y) * 34.0) * exp(-abs(vUv.x - clampedSun.x) * 3.8);
+          col += vec3(1.0, 0.86, 0.62) * anamorphic * 0.12;
 
           // Unified golden-hour sunset color grade (keep true deep shadows + warm gold highlights)
           float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
@@ -239,7 +251,7 @@
     const sunLight = new THREE.DirectionalLight(0xffcf88, 4.0);
     sunLight.position.copy(sunDir).multiplyScalar(95);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.mapSize.set(isPhone ? 1024 : 1536, isPhone ? 1024 : 1536);
     sunLight.shadow.camera.near = 10;
     sunLight.shadow.camera.far = 220;
     sunLight.shadow.camera.left = -64;
@@ -369,7 +381,10 @@
       const r = basinRadiusFactor(x, z);
       const r2 = r * r;
 
-      const poolDepth = -1.78 * Math.exp(-r2 * 1.95) - 0.14 * Math.exp(-r2 * 0.85);
+      // Gradual shallow sandy shelf sloping smoothly into the deep central basin
+      const shelfSlope = -0.32 * THREE.MathUtils.smoothstep(1.04 - r, 0.0, 0.34);
+      const deepBasin = -1.52 * Math.exp(-r2 * 2.35);
+      const poolDepth = shelfSlope + deepBasin;
       const basinMask = Math.exp(-r2 * 1.18);
 
       const centerPeak = duneRidge(x, z, 2.2, -46, -0.18, 28, 24, 10.6, 0.95, 0.26);
@@ -379,13 +394,13 @@
       const farLeft    = duneRidge(x, z, -60, -82, 0.12, 46, 40, 12.5, 0.65, 0.15);
       const farRight   = duneRidge(x, z, 62, -78, -0.18, 48, 40, 10.5, 0.65, 0.15);
 
-      const outerFade = THREE.MathUtils.smoothstep(r, 0.84, 1.95);
+      const outerFade = THREE.MathUtils.smoothstep(r, 0.92, 2.05);
       const dunes = Math.max(centerPeak, leftMid * 0.92, leftOuter * 0.96, rightMid, farLeft * 0.95, farRight * 0.95)
                   + 0.22 * (centerPeak + leftMid + rightMid);
-      const shoreRim = Math.exp(-Math.pow(r - 1.04, 2) * 5.0) * 0.38;
+      const beachSlope = THREE.MathUtils.smoothstep(r, 0.96, 1.55) * 0.56;
       const camClear = 1.0 - Math.exp(-Math.pow(x / 11.5, 2) - Math.pow((z - 17.5) / 7.5, 2));
 
-      return poolDepth + (dunes * outerFade + shoreRim) * (1.0 - basinMask * 0.94) * (0.22 + 0.78 * camClear);
+      return poolDepth + (dunes * outerFade + beachSlope) * (1.0 - basinMask * 0.94) * (0.25 + 0.75 * camClear);
     }
 
     function createSandBumpTexture() {
@@ -413,7 +428,7 @@
       return tex;
     }
 
-    const terrainGeo = new THREE.PlaneGeometry(250, 250, 260, 260);
+    const terrainGeo = new THREE.PlaneGeometry(250, 250, isPhone ? 128 : 170, isPhone ? 128 : 170);
     terrainGeo.rotateX(-Math.PI / 2);
     const tPos = terrainGeo.attributes.position;
     const tColors = new Float32Array(tPos.count * 3);
@@ -631,7 +646,8 @@ float sandNoise(vec2 p) {
           float mod = 1.0 + 0.09 * sin(theta * 2.0 + 0.55) + 0.06 * cos(theta * 3.0 - 0.8) + 0.03 * sin(theta * 5.0);
           float r = sqrt(dx * dx + dz * dz) / mod;
           float r2 = r * r;
-          float floorY = -1.78 * exp(-r2 * 1.95) - 0.14 * exp(-r2 * 0.85);
+          float shelfSlope = -0.32 * smoothstep(0.0, 0.34, 1.04 - r);
+          float floorY = shelfSlope - 1.52 * exp(-r2 * 2.35);
           return max(0.0, 0.02 - floorY);
         }
 
@@ -812,11 +828,11 @@ float sandNoise(vec2 p) {
       `
     };
 
-    const waterGeo = new THREE.PlaneGeometry(35, 24, 140, 100);
+    const waterGeo = new THREE.PlaneGeometry(35, 24, isPhone ? 72 : 100, isPhone ? 52 : 72);
     const waterReflector = new Reflector(waterGeo, {
       clipBias: 0.004,
-      textureWidth: 768,
-      textureHeight: 768,
+      textureWidth: isPhone ? 512 : 640,
+      textureHeight: isPhone ? 512 : 640,
       shader: waterShader
     });
     waterReflector.material.transparent = true;
@@ -2063,13 +2079,13 @@ float sandNoise(vec2 p) {
           vec2 centered = vUv - 0.5;
           float radial = smoothstep(0.50, 0.08, length(centered));
           float n = fbm(vUv * vec2(3.2, 2.0) + vec2(uTime * 0.025, -uTime * 0.01));
-          float alpha = radial * smoothstep(0.35, 0.80, n) * 0.085;
-          gl_FragColor = vec4(0.96, 0.90, 0.84, alpha);
+          float alpha = radial * smoothstep(0.32, 0.78, n) * 0.135;
+          gl_FragColor = vec4(0.98, 0.91, 0.82, alpha);
         }
       `
     });
     const mistConfigs = [
-      { x:  0.0, y: 2.35, z: -20.0, w: 34, d: 12, rx: -Math.PI * 0.32 },
+      { x:  0.0, y: 1.55, z: -14.0, w: 32, d: 9,  rx: -Math.PI * 0.34 },
       { x:  0.0, y: 5.0,  z: -40.0, w: 48, d: 11, rx: -Math.PI * 0.22 }
     ];
     for (const mc of mistConfigs) {
