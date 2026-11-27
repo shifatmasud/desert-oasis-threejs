@@ -62,7 +62,7 @@
     // 1. Renderer, Scene, Camera & Post-Processing
     // ------------------------------------------------------------
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0xefc8a2, 0.0115);
+    scene.fog = new THREE.FogExp2(0xefc8a2, 0.0055);
 
     const camera = new THREE.PerspectiveCamera(
       48,
@@ -128,7 +128,7 @@
       const pmrem = new THREE.PMREMGenerator(renderer);
       const envRT = pmrem.fromEquirectangular(equirect);
       scene.environment = envRT.texture;
-      scene.environmentIntensity = 0.85;
+      scene.environmentIntensity = 0.28;
       equirect.dispose();
       pmrem.dispose();
     })();
@@ -196,15 +196,15 @@
           float sunProx = exp(-length((vUv - uSunScreenPos) * vec2(1.0, 1.35)) * 1.45);
           col += vec3(1.0, 0.84, 0.56) * (shafts / 14.0) * sunProx * 0.42;
 
-          // Unified golden-hour sunset color grade (lifts crushed black shadows into warm plum)
+          // Unified golden-hour sunset color grade (keep true deep shadows + warm gold highlights)
           float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-          vec3 shadowLift = vec3(0.038, 0.022, 0.040) * (1.0 - smoothstep(0.0, 0.30, lum));
+          vec3 shadowLift = vec3(0.010, 0.006, 0.012) * (1.0 - smoothstep(0.0, 0.22, lum));
           col += shadowLift;
-          vec3 highlightTint = vec3(1.04, 0.99, 0.91);
+          vec3 highlightTint = vec3(1.06, 0.99, 0.88);
           col = mix(col, col * highlightTint, smoothstep(0.25, 0.85, lum));
 
-          // Subtle natural filmic contrast
-          col = col * col * (3.0 - 2.0 * col) * 0.14 + col * 0.86;
+          // Punchy filmic S-curve contrast for 3D depth
+          col = col * col * (3.0 - 2.0 * col) * 0.28 + col * 0.72;
 
           // Subtle cinema vignette
           float vig = 1.0 - dot(d, d) * 0.24;
@@ -233,10 +233,10 @@
     // ------------------------------------------------------------
     // 2. Golden-Hour Lighting (Low Sun from Left -> Sculpted Slip-Faces)
     // ------------------------------------------------------------
-    const hemiLight = new THREE.HemisphereLight(0xffdfb8, 0xd8a870, 1.35);
+    const hemiLight = new THREE.HemisphereLight(0xffdfb8, 0x8a6440, 0.65);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffd496, 3.1);
+    const sunLight = new THREE.DirectionalLight(0xffcf88, 4.0);
     sunLight.position.copy(sunDir).multiplyScalar(95);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.set(2048, 2048);
@@ -250,7 +250,7 @@
     sunLight.shadow.normalBias = 0.05;
     scene.add(sunLight);
 
-    const bounceLight = new THREE.DirectionalLight(0xffd6a8, 1.28);
+    const bounceLight = new THREE.DirectionalLight(0xffcfa0, 0.55);
     bounceLight.position.set(18, 12, 32);
     scene.add(bounceLight);
 
@@ -418,10 +418,10 @@
     const tPos = terrainGeo.attributes.position;
     const tColors = new Float32Array(tPos.count * 3);
 
-    const deepWetSand = new THREE.Color(0x9a724a);
-    const wetSand = new THREE.Color(0xd6ab74);
-    const warmSand = new THREE.Color(0xf5d69c);
-    const sunlitSand = new THREE.Color(0xfdeac0);
+    const deepWetSand = new THREE.Color(0x7c5838);
+    const wetSand = new THREE.Color(0xb8864c);
+    const warmSand = new THREE.Color(0xe4b26e);
+    const sunlitSand = new THREE.Color(0xf7d89c);
     const cTmp = new THREE.Color();
 
     // Plant cluster centers for soft ground contact AO under bushes & palms
