@@ -25,7 +25,7 @@
   </style>
 </head>
 <body>
-  <div id="hint">Drag to orbit · Scroll to zoom</div>
+  <div id="hint">Hover or scrub to ripple · Tap anywhere for ambient sound · Drag to orbit</div>
   <script>
     window.addEventListener('error', (e) => {
       const h = document.getElementById('hint');
@@ -570,11 +570,15 @@ float sandNoise(vec2 p) {
         textureMatrix: { value: null },
         uTime: { value: 0 },
         uSunDir: { value: sunDir },
-        uContactPts: { value: waterContactPts }
+        uContactPts: { value: waterContactPts },
+        uPointerPos: { value: new THREE.Vector2(999, 999) },
+        uPointerStrength: { value: 0.0 }
       },
       vertexShader: `
         uniform mat4 textureMatrix;
         uniform float uTime;
+        uniform vec2 uPointerPos;
+        uniform float uPointerStrength;
         varying vec4 vUv;
         varying vec3 vWorldPos;
         void main() {
@@ -585,7 +589,9 @@ float sandNoise(vec2 p) {
           float w1 = sin(wp.x * 0.65 + wp.z * 0.40 - uTime * 0.85) * 0.011;
           float w2 = cos(wp.x * 0.48 - wp.z * 0.78 - uTime * 0.65) * 0.008;
           float w3 = sin(wp.z * 1.45 + wp.x * 0.30 - uTime * 1.15) * 0.004;
-          wp.y += (w1 + w2 + w3) * shoreDamp;
+          float pDist = length(wp.xz - uPointerPos);
+          float pWave = sin(pDist * 10.0 - uTime * 7.5) * exp(-pDist * 0.95) * uPointerStrength * 0.018;
+          wp.y += (w1 + w2 + w3 + pWave) * shoreDamp;
           vWorldPos = wp.xyz;
           vUv = textureMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * viewMatrix * wp;
@@ -596,6 +602,8 @@ float sandNoise(vec2 p) {
         uniform float uTime;
         uniform vec3 uSunDir;
         uniform vec3 uContactPts[12];
+        uniform vec2 uPointerPos;
+        uniform float uPointerStrength;
         varying vec4 vUv;
         varying vec3 vWorldPos;
 
@@ -665,6 +673,14 @@ float sandNoise(vec2 p) {
               vec2 dir = normalize(p - cPt + 1e-4);
               grad += dir * cos(cd * 18.0 - t * 2.2) * exp(-cd * 2.6) * 0.0032;
             }
+          }
+
+          // Interactive hover / touch-scrub expanding concentric water ripple
+          vec2 pDelta = p - uPointerPos;
+          float pLen = length(pDelta);
+          if (pLen > 0.001 && pLen < 5.5) {
+            float pRipple = cos(pLen * 11.0 - t * 8.0) * exp(-pLen * 0.95) * uPointerStrength * 0.055;
+            grad += (pDelta / pLen) * pRipple;
           }
 
           return grad;
@@ -2081,15 +2097,28 @@ float sandNoise(vec2 p) {
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
-      uniforms: { uTime: { value: 0 } },
+      uniforms: {
+        uTime: { value: 0 },
+        uPointerWorld: { value: new THREE.Vector3(999, 999, 999) },
+        uPointerStrength: { value: 0.0 }
+      },
       vertexShader: `
         attribute float aPhase;
         uniform float uTime;
+        uniform vec3 uPointerWorld;
+        uniform float uPointerStrength;
         varying float vAlpha;
         void main() {
           vec3 p = position;
           p.y += sin(uTime * 0.45 + aPhase) * 0.28;
           p.x += cos(uTime * 0.30 + aPhase * 1.3) * 0.25;
+          vec3 toP = p - uPointerWorld;
+          float dP = length(toP);
+          if (dP < 4.5 && dP > 0.001) {
+            float push = (1.0 - dP / 4.5) * uPointerStrength;
+            p += normalize(toP) * push * 0.65;
+            p.y += push * 0.35;
+          }
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           gl_PointSize = (16.5 / -mv.z) * (0.65 + 0.35 * sin(uTime * 1.6 + aPhase));
           vAlpha = 0.38 + 0.36 * sin(uTime * 1.3 + aPhase);
@@ -2109,40 +2138,196 @@ float sandNoise(vec2 p) {
     scene.add(new THREE.Points(moteGeo, moteMat));
 
     // ------------------------------------------------------------
-    // 10. Animation Loop & Resize
+    // 10. Interactive Hover / Touch Scrub, Procedural Web Audio & Animation Loop
     // ------------------------------------------------------------
+    let audioCtx = null;
+    let waterGain = null;
+    let waterFilter = null;
+    let lastDropTime = 0;
+
+    function initAmbientAudio() {
+      if (audioCtx) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return;
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audioCtx = new AC();
+
+      // 3-second seamless pink-ish noise buffer
+      const bufSize = audioCtx.sampleRate * 3;
+      const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0;
+      for (let i = 0; i < bufSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.997 * b0 + white * 0.029;
+        b1 = 0.985 * b1 + white * 0.032;
+        b2 = 0.950 * b2 + white * 0.048;
+        data[i] = (b0 + b1 + b2 + white * 0.06) * 0.35;
+      }
+
+      // Layer 1: Desert breeze & palm frond rustle
+      const windSrc = audioCtx.createBufferSource();
+      windSrc.buffer = noiseBuf;
+      windSrc.loop = true;
+      const windFilter = audioCtx.createBiquadFilter();
+      windFilter.type = 'bandpass';
+      windFilter.frequency.value = 340;
+      windFilter.Q.value = 0.85;
+      const windGain = audioCtx.createGain();
+      windGain.gain.value = 0.06;
+      const windLfo = audioCtx.createOscillator();
+      windLfo.frequency.value = 0.14;
+      const windLfoGain = audioCtx.createGain();
+      windLfoGain.gain.value = 140;
+      windLfo.connect(windLfoGain).connect(windFilter.frequency);
+      windSrc.connect(windFilter).connect(windGain).connect(audioCtx.destination);
+      windSrc.start();
+      windLfo.start();
+
+      // Layer 2: Calm oasis pond lapping water (brightens on hover/scrub)
+      const waterSrc = audioCtx.createBufferSource();
+      waterSrc.buffer = noiseBuf;
+      waterSrc.loop = true;
+      waterFilter = audioCtx.createBiquadFilter();
+      waterFilter.type = 'bandpass';
+      waterFilter.frequency.value = 720;
+      waterFilter.Q.value = 1.6;
+      waterGain = audioCtx.createGain();
+      waterGain.gain.value = 0.035;
+      waterSrc.connect(waterFilter).connect(waterGain).connect(audioCtx.destination);
+      waterSrc.start();
+    }
+
+    function playWaterDroplet(pitchFactor = 1.0) {
+      if (!audioCtx || audioCtx.state !== 'running') return;
+      const now = audioCtx.currentTime;
+      if (now - lastDropTime < 0.14) return;
+      lastDropTime = now;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = 'sine';
+      const baseF = 520 + pitchFactor * 360;
+      osc.frequency.setValueAtTime(baseF, now);
+      osc.frequency.exponentialRampToValueAtTime(baseF * 1.65, now + 0.09);
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(0.035, now + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + 0.16);
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.17);
+    }
+
+    const pointerNdc = new THREE.Vector2(99, 99);
+    const pointerRaycaster = new THREE.Raycaster();
+    const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.02);
+    const pointerWorld = new THREE.Vector3(999, 0.02, 999);
+    const pointerSmooth = new THREE.Vector3(999, 0.02, 999);
+    let pointerTargetStrength = 0;
+    let pointerStrength = 0;
+
+    function updatePointerFromEvent(clientX, clientY, playDrop = false) {
+      pointerNdc.x = (clientX / window.innerWidth) * 2 - 1;
+      pointerNdc.y = -(clientY / window.innerHeight) * 2 + 1;
+      pointerRaycaster.setFromCamera(pointerNdc, camera);
+      const hit = new THREE.Vector3();
+      if (pointerRaycaster.ray.intersectPlane(waterPlane, hit)) {
+        pointerWorld.copy(hit);
+        const rPond = Math.hypot(hit.x / 12.2, (hit.z - 0.6) / 8.2);
+        if (playDrop && rPond < 1.0) playWaterDroplet(Math.random());
+      } else {
+        pointerRaycaster.ray.at(16.0, pointerWorld);
+      }
+      pointerTargetStrength = 1.0;
+    }
+
+    renderer.domElement.addEventListener('pointermove', (e) => {
+      updatePointerFromEvent(e.clientX, e.clientY, true);
+    }, { passive: true });
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      initAmbientAudio();
+      updatePointerFromEvent(e.clientX, e.clientY, true);
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchstart', () => {
+      initAmbientAudio();
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches.length > 0) {
+        updatePointerFromEvent(e.touches[0].clientX, e.touches[0].clientY, true);
+      }
+    }, { passive: true });
+    renderer.domElement.addEventListener('pointerleave', () => {
+      pointerTargetStrength = 0;
+    });
+
     const clock = new THREE.Clock();
 
     function animate() {
       requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
 
+      pointerTargetStrength *= 0.965;
+      pointerStrength += (pointerTargetStrength - pointerStrength) * 0.14;
+      pointerSmooth.lerp(pointerWorld, 0.18);
+
+      if (waterGain && waterFilter) {
+        waterGain.gain.value = 0.035 + pointerStrength * 0.045;
+        waterFilter.frequency.value = 720 + pointerStrength * 520;
+      }
+
       skyMat.uniforms.uTime.value = t;
       terrainTimeUniform.value = t;
       waterReflector.material.uniforms.uTime.value = t;
+      waterReflector.material.uniforms.uPointerPos.value.set(pointerSmooth.x, pointerSmooth.z);
+      waterReflector.material.uniforms.uPointerStrength.value = pointerStrength;
       moteMat.uniforms.uTime.value = t;
+      moteMat.uniforms.uPointerWorld.value.copy(pointerSmooth);
+      moteMat.uniforms.uPointerStrength.value = pointerStrength;
       mistMat.uniforms.uTime.value = t;
       animeFilmicPass.uniforms.uTime.value = t;
 
       for (const fl of flyers) {
-        fl.group.position.x = fl.base.x + Math.sin(t * fl.speed + fl.phase) * 0.85;
-        fl.group.position.y = fl.base.y + Math.sin(t * fl.speed * 1.7 + fl.phase) * 0.16;
-        fl.group.position.z = fl.base.z + Math.cos(t * fl.speed * 0.8 + fl.phase) * 0.75;
-        const flap = Math.sin(t * 22.0 + fl.phase) * 0.65;
+        let fx = fl.base.x + Math.sin(t * fl.speed + fl.phase) * 0.85;
+        let fy = fl.base.y + Math.sin(t * fl.speed * 1.7 + fl.phase) * 0.16;
+        let fz = fl.base.z + Math.cos(t * fl.speed * 0.8 + fl.phase) * 0.75;
+        const dx = fx - pointerSmooth.x;
+        const dz = fz - pointerSmooth.z;
+        const dist = Math.hypot(dx, dz);
+        let flapBoost = 0;
+        if (dist < 4.0 && dist > 0.01) {
+          const push = (1.0 - dist / 4.0) * pointerStrength;
+          fx += (dx / dist) * push * 1.1;
+          fz += (dz / dist) * push * 1.1;
+          fy += push * 0.55;
+          flapBoost = push * 14.0;
+        }
+        fl.group.position.set(fx, fy, fz);
+        const flap = Math.sin(t * (22.0 + flapBoost) + fl.phase) * 0.65;
         fl.wL.rotation.z = flap;
         fl.wR.rotation.z = -flap;
       }
 
       for (const ft of floaters) {
-        const fx = ft.baseX + Math.sin(t * 0.25 + ft.phase) * 0.06;
-        const fz = ft.baseZ + Math.cos(t * 0.20 + ft.phase) * 0.05;
+        let fx = ft.baseX + Math.sin(t * 0.25 + ft.phase) * 0.06;
+        let fz = ft.baseZ + Math.cos(t * 0.20 + ft.phase) * 0.05;
+        const dx = fx - pointerSmooth.x;
+        const dz = fz - pointerSmooth.z;
+        const pDist = Math.hypot(dx, dz);
+        let pWave = 0;
+        if (pDist < 4.5 && pDist > 0.001) {
+          const push = Math.exp(-pDist * 0.95) * pointerStrength;
+          fx += (dx / pDist) * push * 0.28;
+          fz += (dz / pDist) * push * 0.28;
+          pWave = Math.sin(pDist * 10.0 - t * 8.0) * push * 0.018;
+        }
         const rNorm = Math.hypot(fx / 12.2, (fz - 0.6) / 8.2);
         const shoreDamp = THREE.MathUtils.smoothstep(1.02 - rNorm, 0.0, 0.47);
-        const waveY = (Math.sin(fx * 0.65 + fz * 0.40 - t * 0.85) * 0.011 + Math.cos(fx * 0.48 - fz * 0.78 - t * 0.65) * 0.008 + Math.sin(fz * 1.45 + fx * 0.30 - t * 1.15) * 0.004) * shoreDamp;
+        const waveY = (Math.sin(fx * 0.65 + fz * 0.40 - t * 0.85) * 0.011 + Math.cos(fx * 0.48 - fz * 0.78 - t * 0.65) * 0.008 + Math.sin(fz * 1.45 + fx * 0.30 - t * 1.15) * 0.004 + pWave) * shoreDamp;
         ft.mesh.position.set(fx, 0.032 + waveY, fz);
         ft.mesh.rotation.x = Math.cos(fz * 1.45 - t * 1.15) * 0.04 * shoreDamp;
         ft.mesh.rotation.z = Math.sin(fx * 0.65 - t * 0.85) * 0.04 * shoreDamp;
-        ft.mesh.rotation.y += 0.0008;
+        ft.mesh.rotation.y += 0.0008 + pointerStrength * 0.003;
       }
 
       for (const b of birds) {
@@ -2154,8 +2339,13 @@ float sandNoise(vec2 p) {
       }
 
       for (const item of palmCrowns) {
-        item.crown.rotation.z = Math.sin(t * 0.85 + item.phase) * 0.025;
-        item.crown.rotation.x = Math.cos(t * 0.65 + item.phase) * 0.018;
+        const cPos = item.crown.getWorldPosition(new THREE.Vector3());
+        const dx = cPos.x - pointerSmooth.x;
+        const dz = cPos.z - pointerSmooth.z;
+        const pDist = Math.hypot(dx, dz);
+        const breeze = pDist < 9.0 ? (1.0 - pDist / 9.0) * pointerStrength * 0.045 : 0;
+        item.crown.rotation.z = Math.sin(t * 0.85 + item.phase) * 0.025 + Math.sign(dx) * breeze;
+        item.crown.rotation.x = Math.cos(t * 0.65 + item.phase) * 0.018 + Math.sign(dz) * breeze * 0.6;
       }
 
       controls.update();
