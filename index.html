@@ -1613,8 +1613,10 @@ float sandNoise(vec2 p) {
 
     const bankSpots = [
       [-11.6, 4.4, 2.3, 13, 0.55, 1.15], [-12.2, 1.0, 2.4, 13, 0.5, 1.15], [-11.2, -2.4, 2.2, 11, 0.5, 1.1],
+      [-9.6, -1.2, 1.6, 8, 0.45, 1.15], [-7.8, -4.0, 1.6, 8, 0.45, 1.12],
       [-8.8, -5.0, 2.1, 11, 0.45, 1.05], [-5.6, -6.8, 1.8, 9, 0.4, 1.0],
       [12.2, 4.4, 2.3, 13, 0.55, 1.15],  [12.8, 1.0, 2.4, 13, 0.5, 1.15],  [11.8, -2.4, 2.2, 11, 0.5, 1.1],
+      [9.8, -1.2, 1.6, 8, 0.45, 1.15],   [7.8, -4.0, 1.6, 8, 0.45, 1.12],
       [9.4, -5.0, 2.1, 11, 0.45, 1.05],  [6.0, -6.8, 1.8, 9, 0.4, 1.0],
       [-5.2, 10.6, 2.0, 14, 0.85, 1.25], [-3.6, 12.6, 1.6, 14, 0.92, 1.25], [-2.1, 14.2, 1.2, 12, 0.95, 1.20],
       [5.2, 10.6, 2.0, 14, 0.40, 1.25],  [3.6, 12.6, 1.6, 14, 0.35, 1.25],  [2.3, 14.0, 1.1, 10, 0.30, 1.15]
@@ -1661,7 +1663,7 @@ float sandNoise(vec2 p) {
       }
     }
     addAgaveRosette(1.35, 14.3, 0.92);
-    addAgaveRosette(2.65, 13.5, 1.05);
+    addAgaveRosette(3.55, 13.4, 1.18);
 
     // Layer 2: Dry golden desert scrub & grass tufts bridging lush banks to outer sand
     const dryGrassMat = new THREE.MeshStandardMaterial({
@@ -1788,6 +1790,7 @@ float sandNoise(vec2 p) {
     for (let i = 0; i < 48; i++) {
       const ang = (i / 48) * Math.PI * 2 + rand() * 0.20;
       if (Math.sin(ang) > 0.35 && Math.abs(Math.cos(ang)) < 0.65) continue;
+      if (Math.sin(ang) < -0.50 && Math.abs(Math.cos(ang)) < 0.55) continue;
       const rad = 0.99 + rand() * 0.08;
       const sx = Math.cos(ang) * 12.6 * rad;
       const sz = 0.6 + Math.sin(ang) * 8.3 * rad;
@@ -1811,6 +1814,7 @@ float sandNoise(vec2 p) {
     for (let i = 0; i < 14; i++) {
       const ang = (i / 14) * Math.PI * 2 + rand() * 0.35;
       if (Math.sin(ang) > 0.25 && Math.abs(Math.cos(ang)) < 0.72) continue;
+      if (Math.sin(ang) < -0.50 && Math.abs(Math.cos(ang)) < 0.55) continue;
       const sx = Math.cos(ang) * (8.4 + rand() * 2.6);
       const sz = 0.6 + Math.sin(ang) * (5.2 + rand() * 2.0);
       const sy = getTerrainHeight(sx, sz) - 0.02;
