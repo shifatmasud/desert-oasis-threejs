@@ -297,9 +297,9 @@
       const centerPeak = duneRidge(x, z, 2.2, -46, -0.18, 28, 24, 10.6, 0.95, 0.26);
       const leftMid    = duneRidge(x, z, -24, -34, -0.45, 28, 26, 7.6, 0.85, 0.20);
       const leftOuter  = duneRidge(x, z, -46, -24, -0.25, 34, 34, 10.2, 0.75, 0.16);
-      const rightMid   = duneRidge(x, z, 31, -28, 0.42, 34, 32, 12.8, 0.85, 0.18);
-      const farLeft    = duneRidge(x, z, -60, -82, 0.12, 46, 40, 13.5, 0.65, 0.15);
-      const farRight   = duneRidge(x, z, 62, -78, -0.18, 48, 40, 15.0, 0.65, 0.15);
+      const rightMid   = duneRidge(x, z, 31, -28, 0.42, 34, 32, 8.8, 0.85, 0.18);
+      const farLeft    = duneRidge(x, z, -60, -82, 0.12, 46, 40, 12.5, 0.65, 0.15);
+      const farRight   = duneRidge(x, z, 62, -78, -0.18, 48, 40, 10.5, 0.65, 0.15);
 
       const outerFade = THREE.MathUtils.smoothstep(r, 0.84, 1.95);
       const dunes = Math.max(centerPeak, leftMid * 0.92, leftOuter * 0.96, rightMid, farLeft * 0.95, farRight * 0.95)
@@ -340,10 +340,10 @@
     const tPos = terrainGeo.attributes.position;
     const tColors = new Float32Array(tPos.count * 3);
 
-    const deepWetSand = new THREE.Color(0x6d5234);
-    const wetSand = new THREE.Color(0xa68256);
-    const warmSand = new THREE.Color(0xe6c28a);
-    const sunlitSand = new THREE.Color(0xf8dfb0);
+    const deepWetSand = new THREE.Color(0x886440);
+    const wetSand = new THREE.Color(0xc89a64);
+    const warmSand = new THREE.Color(0xf0ca8e);
+    const sunlitSand = new THREE.Color(0xfce6b8);
     const cTmp = new THREE.Color();
 
     // Plant cluster centers for soft ground contact AO under bushes & palms
@@ -431,17 +431,15 @@ float sandNoise(vec2 p) {
 }`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 {
-  // AAA multi-scale wind-blown desert ripples in world space
+  // Velvety desert sand micro-grain with ultra-subtle wind ripples (zero corduroy stripes)
   vec2 sp = vSandWorldPos.xz;
   float warp = sandNoise(sp * 0.24) * 3.8 + sandNoise(sp * 0.72) * 1.4;
   float distFade = clamp(1.0 - length(sp) / 90.0, 0.18, 1.0);
-  // Subtle organic wind ripples (attenuated in foreground shadow to avoid zig-zag bands)
   float fgFade = smoothstep(5.0, 12.0, length(sp - vec2(0.0, 13.0)));
   float rFine = sin(sp.x * 14.0 - sp.y * 6.5 + warp * 3.2) * (0.35 + 0.65 * fgFade);
-  // Subtle contour-hugging dune wind-striations on far slopes
   float rBroad = sin(sp.x * 3.8 - sp.y * 5.2 + warp * 3.6);
   float microGrain = sandNoise(sp * 56.0) - 0.5;
-  float rippleSlope = (rFine * 0.055 * distFade + rBroad * 0.026 + microGrain * 0.065) * smoothstep(0.02, 0.35, vSandWorldPos.y);
+  float rippleSlope = (rFine * 0.018 * distFade + rBroad * 0.009 + microGrain * 0.055) * smoothstep(0.02, 0.35, vSandWorldPos.y);
   normal = normalize(normal + vec3(rippleSlope, 0.0, rippleSlope * 0.65));
 }`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -548,10 +546,11 @@ float sandNoise(vec2 p) {
         }
 
         vec2 waveGradient(vec2 p, float t, float d) {
-          // Super dreamy, mirror-calm pond swells
+          // Gentle horizontal pond wave-ripples that softly break up palm reflections
           vec2 grad = vec2(0.0);
-          grad += vec2( 0.85,  0.52) * cos(dot(p, vec2(0.65, 0.40)) - t * 0.55) * 0.0011;
-          grad += vec2(-0.55,  0.83) * cos(dot(p, vec2(-0.48, 0.78)) - t * 0.45) * 0.0009;
+          grad += vec2( 0.85,  0.52) * cos(dot(p, vec2(0.65, 0.40)) - t * 0.55) * 0.0018;
+          grad += vec2(-0.55,  0.83) * cos(dot(p, vec2(-0.48, 0.78)) - t * 0.45) * 0.0014;
+          grad += vec2( 0.15,  1.00) * cos(p.y * 5.6 + vnoise(p * 1.4) * 2.6 - t * 1.1) * 0.0068 * smoothstep(0.03, 0.35, d);
 
           // Ultra-soft cat's-paw breeze patches
           vec2 windUv = p * vec2(0.12, 0.28) + vec2(t * 0.018, -t * 0.008);
@@ -635,9 +634,9 @@ float sandNoise(vec2 p) {
           float cosThetaT = max(abs(refracted.y), 0.25);
           float opticalPath = depth / cosThetaT;
 
-          // Deep tranquil absorption so reflections stay rich and natural
-          vec3 sigma = vec3(2.25, 0.62, 0.52);
-          vec3 transmittance = exp(-sigma * opticalPath * 1.35);
+          // Rich Caribbean turquoise-aqua absorption (kills pale silver-white washout)
+          vec3 sigma = vec3(2.85, 0.38, 0.44);
+          vec3 transmittance = exp(-sigma * opticalPath * 1.30);
 
           // Snell's-law refracted underwater sand bed with subtle wind ripples
           vec2 floorSample = p + refracted.xz * (depth / cosThetaT) * 0.35;
@@ -651,31 +650,31 @@ float sandNoise(vec2 p) {
           float cG = causticPattern(floorSample, uTime);
           float cB = causticPattern(floorSample + dispDir, uTime);
           float causticMask = smoothstep(0.04, 0.20, depth) * smoothstep(1.8, 0.25, depth);
-          // Shadowed shallow water under bank foliage (fixes bright cyan cutout seam under dark bushes!)
-          float edgeEllip = length(vec2(p.x / 11.8, (p.y - 0.6) / 7.8));
-          float bankCover = smoothstep(0.76, 1.02, edgeEllip);
+          // Soft radial bank shadow (no sharp teal ring) + luminous Caribbean turquoise-aqua water
+          float edgeEllip = length(vec2(p.x / 12.2, (p.y - 0.6) / 8.0));
+          float bankCover = smoothstep(0.62, 1.08, edgeEllip);
           float frontOpening = smoothstep(2.4, 5.2, abs(p.x)) + smoothstep(6.0, 2.0, p.y);
           float backOpening = smoothstep(2.6, 5.6, abs(p.x)) + smoothstep(-3.8, 1.0, p.y);
-          float foliageShadow = clamp(bankCover * clamp(frontOpening, 0.0, 1.0) * clamp(backOpening, 0.0, 1.0), 0.0, 1.0);
-          sandBed *= mix(1.0, 0.34, foliageShadow);
-          vec3 causticRGB = vec3(cR * 1.04, cG * 0.98, cB * 0.88) * causticMask * 0.38 * mix(1.0, 0.20, foliageShadow);
+          float foliageShadow = clamp(bankCover * clamp(frontOpening, 0.0, 1.0) * clamp(backOpening, 0.0, 1.0), 0.0, 1.0) * 0.58;
+          sandBed *= mix(1.0, 0.42, foliageShadow);
+          vec3 causticRGB = vec3(cR * 1.04, cG * 0.98, cB * 0.88) * causticMask * 0.36 * mix(1.0, 0.30, foliageShadow);
           vec3 sandFloor = sandBed + causticRGB;
 
-          // Luminous oasis turquoise-emerald scatter (naturally shaded beneath overhanging banks)
+          // Luminous turquoise-aqua oasis scatter matching reference
           float sssAngle = pow(max(dot(V, -uSunDir), 0.0), 3.5);
           float waveSlope = clamp(length(grad) * 24.0, 0.0, 1.0);
-          vec3 scatterCol = (vec3(0.025, 0.17, 0.17) + vec3(0.05, 0.20, 0.16) * (sssAngle * 0.45 + waveSlope * 0.18)) * mix(1.0, 0.42, foliageShadow);
+          vec3 scatterCol = (vec3(0.04, 0.34, 0.35) + vec3(0.06, 0.24, 0.22) * (sssAngle * 0.45 + waveSlope * 0.18)) * mix(1.0, 0.52, foliageShadow);
           vec3 refractedCol = sandFloor * transmittance + scatterCol * (1.0 - transmittance);
 
           // Shoreline capillary meniscus & seamless wet-sand transition
           float meniscus = smoothstep(0.14, 0.005, depth);
-          refractedCol = mix(refractedCol, vec3(0.42, 0.32, 0.20), meniscus * 0.65);
+          refractedCol = mix(refractedCol, vec3(0.58, 0.45, 0.29), meniscus * 0.62);
 
           vec4 projUv = vUv;
-          projUv.xy += vec2(N.x * 0.018, N.z * 0.042) * projUv.w;
-          vec3 reflCol = texture2DProj(tDiffuse, projUv).rgb * 0.94;
+          projUv.xy += vec2(N.x * 0.038, N.z * 0.088) * projUv.w;
+          vec3 reflCol = texture2DProj(tDiffuse, projUv).rgb * 0.90;
 
-          float reflWeight = clamp(fresnel * 1.45 + 0.14, 0.14, 0.84);
+          float reflWeight = clamp(fresnel * 0.72 + 0.06, 0.06, 0.42);
           vec3 col = mix(refractedCol, reflCol, reflWeight);
 
           // Dual-lobe GGX specular: delicate sun glints + soft golden sheen
@@ -687,8 +686,8 @@ float sandNoise(vec2 p) {
           col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.28, 1.2) + min(specBroad * 0.16, 0.35));
 
           float foamNoise = vnoise(p * 2.8 + vec2(uTime * 0.10, -uTime * 0.08));
-          float lap = smoothstep(0.06, 0.010, depth + foamNoise * 0.014) * smoothstep(0.004, 0.022, depth);
-          col = mix(col, vec3(0.84, 0.82, 0.76), lap * 0.10);
+          float lap = smoothstep(0.075, 0.012, depth + foamNoise * 0.016) * smoothstep(0.004, 0.024, depth);
+          col = mix(col, vec3(0.92, 0.94, 0.92), lap * 0.48);
 
           // Water-contact optics: subtle capillary meniscus + contact AO around stones & floaters
           for (int i = 0; i < 12; i++) {
@@ -970,13 +969,14 @@ float sandNoise(vec2 p) {
     frondNormal.anisotropy = 4;
 
     const frondMat = new THREE.MeshStandardMaterial({
+      color: 0xc2ce7e,
       map: frondMap,
       normalMap: frondNormal,
       normalScale: new THREE.Vector2(0.75, 0.75),
       alphaTest: 0.28,
       alphaToCoverage: true,
       vertexColors: true,
-      roughness: 0.56,
+      roughness: 0.54,
       metalness: 0.0,
       side: THREE.DoubleSide
     });
@@ -1000,7 +1000,7 @@ float sandNoise(vec2 p) {
         float backLight = pow(clamp(dot(viewDirSSS, -uSunDir), 0.0, 1.0), 2.0);
         float throughLeaf = pow(clamp(dot(-nW, uSunDir) * 0.5 + 0.5, 0.0, 1.0), 1.6);
         float rimGlow = pow(1.0 - abs(dot(nW, viewDirSSS)), 1.7);
-        vec3 sssTint = vec3(0.92, 0.78, 0.26) * (backLight * 0.58 + throughLeaf * 0.24 + rimGlow * 0.30) + vec3(0.11, 0.09, 0.05);
+        vec3 sssTint = vec3(0.98, 0.84, 0.32) * (backLight * 0.65 + throughLeaf * 0.34 + rimGlow * 0.36) + vec3(0.22, 0.19, 0.08);
         gl_FragColor.rgb += sssTint * diffuseColor.rgb;
         #include <dithering_fragment>
         `
@@ -1572,19 +1572,19 @@ float sandNoise(vec2 p) {
         }
 
         if (rand() > 0.22) {
-          if (rand() < 0.32) {
-            tmpObj.position.set(lx + (rand() - 0.5) * 0.25, 0.05, lz + (rand() - 0.5) * 0.25);
+          if (rand() < 0.36) {
+            tmpObj.position.set(lx + (rand() - 0.5) * 0.25, 0.08, lz + (rand() - 0.5) * 0.25);
             tmpObj.rotation.set((rand() - 0.5) * 0.22, rand() * Math.PI * 2, (rand() - 0.5) * 0.22);
             tmpObj.scale.set(1, 1, 1);
             tmpObj.updateMatrix();
-            addPurpleSpikeToBuckets((0.85 + rand() * 0.35) * scaleBoost, new THREE.Matrix4().multiplyMatrices(clusterMat, tmpObj.matrix));
+            addPurpleSpikeToBuckets((1.05 + rand() * 0.45) * scaleBoost, new THREE.Matrix4().multiplyMatrices(clusterMat, tmpObj.matrix));
           } else {
             const pMat = petalMats[Math.floor(rand() * petalMats.length)];
-            const blossoms = 1 + Math.floor(rand() * 3);
+            const blossoms = 2 + Math.floor(rand() * 3);
             for (let k = 0; k < blossoms; k++) {
-              const bx = lx + (rand() - 0.5) * 0.32;
-              const bz = lz + (rand() - 0.5) * 0.32;
-              const hScale = (0.72 + rand() * 0.55) * scaleBoost;
+              const bx = lx + (rand() - 0.5) * 0.45;
+              const bz = lz + (rand() - 0.5) * 0.45;
+              const hScale = (0.85 + rand() * 0.60) * scaleBoost;
               tmpObj.position.set(bx, 0, bz);
               tmpObj.rotation.set((rand() - 0.5) * 0.35, rand() * Math.PI * 2, (rand() - 0.5) * 0.35);
               tmpObj.scale.set(1, hScale, 1);
@@ -1592,7 +1592,7 @@ float sandNoise(vec2 p) {
               const stemWorld = new THREE.Matrix4().multiplyMatrices(clusterMat, tmpObj.matrix);
               pushGeo(stemMat, stemGeo, vZero, eZero, sOne, stemWorld);
 
-              const bScale = (0.82 + rand() * 0.45) * scaleBoost / hScale;
+              const bScale = (0.98 + rand() * 0.50) * scaleBoost / hScale;
               tmpObj.position.set(0, 0.54, 0);
               tmpObj.rotation.set(0.35 + (rand() - 0.5) * 0.4, 0, 0);
               tmpObj.scale.set(bScale, bScale, bScale);
@@ -1605,10 +1605,10 @@ float sandNoise(vec2 p) {
     }
 
     const bankSpots = [
-      [-11.2, 4.4, 2.3, 12, 0.55, 1.15], [-11.8, 1.0, 2.4, 12, 0.5, 1.15], [-10.8, -2.4, 2.2, 10, 0.5, 1.1],
-      [-8.4, -4.8, 2.1, 10, 0.45, 1.05], [-5.4, -6.6, 1.8, 8, 0.4, 1.0],
-      [11.2, 4.4, 2.3, 12, 0.55, 1.15],  [11.8, 1.0, 2.4, 12, 0.5, 1.15],  [10.8, -2.4, 2.2, 10, 0.5, 1.1],
-      [8.4, -4.8, 2.1, 10, 0.45, 1.05],  [5.4, -6.6, 1.8, 8, 0.4, 1.0],
+      [-11.6, 4.4, 2.3, 13, 0.55, 1.15], [-12.2, 1.0, 2.4, 13, 0.5, 1.15], [-11.2, -2.4, 2.2, 11, 0.5, 1.1],
+      [-8.8, -5.0, 2.1, 11, 0.45, 1.05], [-5.6, -6.8, 1.8, 9, 0.4, 1.0],
+      [12.2, 4.4, 2.3, 13, 0.55, 1.15],  [12.8, 1.0, 2.4, 13, 0.5, 1.15],  [11.8, -2.4, 2.2, 11, 0.5, 1.1],
+      [9.4, -5.0, 2.1, 11, 0.45, 1.05],  [6.0, -6.8, 1.8, 9, 0.4, 1.0],
       [-5.2, 10.6, 2.0, 14, 0.85, 1.25], [-3.6, 12.6, 1.6, 14, 0.92, 1.25], [-2.1, 14.2, 1.2, 12, 0.95, 1.20],
       [5.2, 10.6, 2.0, 14, 0.40, 1.25],  [3.6, 12.6, 1.6, 14, 0.35, 1.25],  [2.3, 14.0, 1.1, 10, 0.30, 1.15]
     ];
