@@ -598,15 +598,17 @@ float sandNoise(vec2 p) {
         varying vec3 vWorldPos;
         void main() {
           vec4 wp = modelMatrix * vec4(position, 1.0);
-          // Gentle vertex-deformed pond waves (damped near shallow shoreline)
+          // Fetch-limited sheltered pond spectrum (~25m fetch, U10 = 2.4 m/s, gravity-capillary dispersion)
           float rNorm = length(vec2(wp.x / 12.2, (wp.z - 0.6) / 8.2));
           float shoreDamp = smoothstep(1.02, 0.55, rNorm);
-          float w1 = sin(wp.x * 0.65 + wp.z * 0.40 - uTime * 0.85) * 0.011;
-          float w2 = cos(wp.x * 0.48 - wp.z * 0.78 - uTime * 0.65) * 0.008;
-          float w3 = sin(wp.z * 1.45 + wp.x * 0.30 - uTime * 1.15) * 0.004;
+          float fetch = smoothstep(-7.5, 7.5, wp.x * 0.6 + wp.z * 0.4) * 0.45 + 0.55;
+          float w1 = sin(dot(wp.xz, vec2(0.72, 0.46)) - uTime * sqrt(9.81 * 0.85)) * 0.010;
+          float w2 = cos(dot(wp.xz, vec2(-0.54, 0.84)) - uTime * sqrt(9.81 * 1.00)) * 0.0075;
+          float w3 = sin(dot(wp.xz, vec2(0.32, 1.48)) - uTime * sqrt(9.81 * 1.51)) * 0.0045;
+          float w4 = cos(dot(wp.xz, vec2(-1.15, 0.92)) - uTime * sqrt(9.81 * 1.47)) * 0.003;
           float pDist = length(wp.xz - uPointerPos);
           float pWave = sin(pDist * 10.0 - uTime * 7.5) * exp(-pDist * 0.95) * uPointerStrength * 0.018;
-          wp.y += (w1 + w2 + w3 + pWave) * shoreDamp;
+          wp.y += ((w1 + w2 + w3 + w4) * fetch + pWave) * shoreDamp;
           vWorldPos = wp.xyz;
           vUv = textureMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * viewMatrix * wp;
@@ -639,6 +641,18 @@ float sandNoise(vec2 p) {
           );
         }
 
+        float fbm4(vec2 p) {
+          float sum = 0.0;
+          float amp = 0.5;
+          mat2 rot = mat2(0.80, -0.60, 0.60, 0.80);
+          for (int i = 0; i < 4; i++) {
+            sum += amp * vnoise(p);
+            p = rot * p * 2.04 + vec2(17.1, 31.7);
+            amp *= 0.5;
+          }
+          return sum;
+        }
+
         float getWaterDepth(vec2 xz) {
           float dx = xz.x / 12.8;
           float dz = (xz.y - 0.6) / 8.5;
@@ -652,28 +666,30 @@ float sandNoise(vec2 p) {
         }
 
         vec2 waveGradient(vec2 p, float t, float d) {
-          // Crisp horizontal wind-wave crests (stronger on left/far pond like reference)
+          // Fetch-limited sheltered pond spectrum + 4-octave rotated FBM capillary ripples
           vec2 grad = vec2(0.0);
-          grad += vec2( 0.85,  0.52) * cos(dot(p, vec2(0.65, 0.40)) - t * 0.55) * 0.0020;
-          grad += vec2(-0.55,  0.83) * cos(dot(p, vec2(-0.48, 0.78)) - t * 0.45) * 0.0016;
+          float fetch = smoothstep(-7.5, 7.5, p.x * 0.6 + p.y * 0.4) * 0.45 + 0.55;
+          grad += vec2( 0.72,  0.46) * cos(dot(p, vec2(0.72, 0.46)) - t * 2.89) * 0.0022 * fetch;
+          grad += vec2(-0.54,  0.84) * cos(dot(p, vec2(-0.54, 0.84)) - t * 3.13) * 0.0018 * fetch;
           float leftWaveMask = smoothstep(4.0, -7.0, p.x) * 0.65 + 0.35;
-          grad += vec2( 0.12,  1.00) * cos(p.y * 7.8 + vnoise(p * 1.2) * 3.2 - t * 1.2) * 0.0115 * leftWaveMask * smoothstep(0.04, 0.35, d);
-          grad += vec2(-0.08,  1.00) * cos(p.y * 13.5 + vnoise(p * 2.4) * 2.1 - t * 1.6) * 0.0055 * leftWaveMask * smoothstep(0.06, 0.40, d);
+          float fbmWarp = fbm4(p * 1.15 + vec2(t * 0.04, -t * 0.03));
+          grad += vec2( 0.12,  1.00) * cos(p.y * 7.8 + fbmWarp * 4.2 - t * 1.2) * 0.0110 * leftWaveMask * smoothstep(0.04, 0.35, d);
+          grad += vec2(-0.08,  1.00) * cos(p.y * 13.5 + fbmWarp * 2.8 - t * 1.6) * 0.0052 * leftWaveMask * smoothstep(0.06, 0.40, d);
 
-          // Ultra-soft cat's-paw breeze patches
-          vec2 windUv = p * vec2(0.12, 0.28) + vec2(t * 0.018, -t * 0.008);
-          float gust = vnoise(windUv) * 0.65 + vnoise(windUv * 2.0 + vec2(3.7, 1.9)) * 0.35;
-          float catspaw = smoothstep(0.50, 0.78, gust);
+          // 4-octave FBM cat's-paw wind-gust patches
+          vec2 windUv = p * vec2(0.14, 0.30) + vec2(t * 0.018, -t * 0.008);
+          float gust = fbm4(windUv);
+          float catspaw = smoothstep(0.46, 0.74, gust);
 
           float shallowDamp = smoothstep(0.02, 0.32, d);
-          float ampMask = shallowDamp * (0.06 + 0.94 * catspaw);
+          float ampMask = shallowDamp * (0.08 + 0.92 * catspaw) * fetch;
 
-          vec2 capP = p * vec2(2.0, 4.4);
-          float e = 0.06;
-          float n0 = vnoise(capP + vec2(t * 0.16, -t * 0.10));
-          float nx = vnoise(capP + vec2(e, 0.0) + vec2(t * 0.16, -t * 0.10));
-          float nz = vnoise(capP + vec2(0.0, e) + vec2(t * 0.16, -t * 0.10));
-          grad += vec2((nx - n0) / e, (nz - n0) / e) * 0.0022 * ampMask;
+          vec2 capP = p * vec2(2.2, 4.6);
+          float e = 0.05;
+          float n0 = fbm4(capP + vec2(t * 0.16, -t * 0.10));
+          float nx = fbm4(capP + vec2(e, 0.0) + vec2(t * 0.16, -t * 0.10));
+          float nz = fbm4(capP + vec2(0.0, e) + vec2(t * 0.16, -t * 0.10));
+          grad += vec2((nx - n0) / e, (nz - n0) / e) * 0.0026 * ampMask;
 
           float r1 = length(p - vec2(-2.6, 1.4));
           grad += normalize(p - vec2(-2.6, 1.4) + 1e-4) * cos(r1 * 10.0 - t * 1.6) * exp(-r1 * 1.05) * 0.0024;
@@ -803,13 +819,12 @@ float sandNoise(vec2 p) {
           float specBroad = D_GGX(NdotH, 0.11) * fresnel * NdotL;
           col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.22, 0.55) + min(specBroad * 0.20, 0.38));
 
-          // Delicate multi-octave lacy shoreline foam hugging the water edge
-          float foamN1 = vnoise(p * 4.5 + vec2(uTime * 0.08, -uTime * 0.06));
-          float foamN2 = vnoise(p * 12.5 - vec2(uTime * 0.05, uTime * 0.09));
-          float foamLace = smoothstep(0.32, 0.74, foamN1 * 0.6 + foamN2 * 0.4);
-          float wavePulse = 0.5 + 0.5 * sin(depth * 42.0 - uTime * 1.4 + foamN1 * 3.0);
-          float lap = smoothstep(0.115, 0.008, depth + foamN1 * 0.025) * smoothstep(0.003, 0.022, depth);
-          col = mix(col, vec3(0.98, 0.96, 0.92), lap * (0.45 + 0.45 * foamLace * wavePulse));
+          // Delicate 4-octave FBM lacy shoreline foam hugging the water edge
+          float foamFbm = fbm4(p * 4.2 + vec2(uTime * 0.08, -uTime * 0.06));
+          float foamLace = smoothstep(0.36, 0.72, foamFbm);
+          float wavePulse = 0.5 + 0.5 * sin(depth * 42.0 - uTime * 1.4 + foamFbm * 3.2);
+          float lap = smoothstep(0.115, 0.008, depth + foamFbm * 0.024) * smoothstep(0.003, 0.022, depth);
+          col = mix(col, vec3(0.98, 0.96, 0.92), lap * (0.42 + 0.48 * foamLace * wavePulse));
 
           // Water-contact optics: subtle capillary meniscus + contact AO around stones & floaters
           for (int i = 0; i < 12; i++) {
