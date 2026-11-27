@@ -471,34 +471,30 @@
         }
 
         vec2 waveGradient(vec2 p, float t, float d) {
-          // Real calm-pond physics:
-          // 1) Ultra-gentle long-wavelength pond swells (smooth liquid reflections)
+          // Super dreamy, mirror-calm pond swells
           vec2 grad = vec2(0.0);
-          grad += vec2( 0.85,  0.52) * cos(dot(p, vec2(0.75, 0.45)) - t * 0.85) * 0.0022;
-          grad += vec2(-0.55,  0.83) * cos(dot(p, vec2(-0.55, 0.90)) - t * 0.65) * 0.0018;
-          grad += vec2( 0.30, -0.95) * cos(dot(p, vec2(0.40, -1.25)) - t * 1.05) * 0.0014;
+          grad += vec2( 0.85,  0.52) * cos(dot(p, vec2(0.65, 0.40)) - t * 0.55) * 0.0011;
+          grad += vec2(-0.55,  0.83) * cos(dot(p, vec2(-0.48, 0.78)) - t * 0.45) * 0.0009;
 
-          // 2) Anisotropic "cat's paw" wind-gust patches (smoothly bounded, not uniform everywhere)
-          vec2 windUv = p * vec2(0.14, 0.34) + vec2(t * 0.025, -t * 0.012);
-          float gust = vnoise(windUv) * 0.65 + vnoise(windUv * 2.1 + vec2(3.7, 1.9)) * 0.35;
-          float catspaw = smoothstep(0.46, 0.74, gust);
+          // Ultra-soft cat's-paw breeze patches
+          vec2 windUv = p * vec2(0.12, 0.28) + vec2(t * 0.018, -t * 0.008);
+          float gust = vnoise(windUv) * 0.65 + vnoise(windUv * 2.0 + vec2(3.7, 1.9)) * 0.35;
+          float catspaw = smoothstep(0.50, 0.78, gust);
 
-          float shallowDamp = smoothstep(0.015, 0.28, d);
-          float ampMask = shallowDamp * (0.10 + 0.90 * catspaw);
+          float shallowDamp = smoothstep(0.02, 0.32, d);
+          float ampMask = shallowDamp * (0.06 + 0.94 * catspaw);
 
-          // 3) Soft capillary wind ripples inside the cat's-paw patches (anisotropic along breeze)
-          vec2 capP = p * vec2(2.4, 5.2);
-          float e = 0.05;
-          float n0 = vnoise(capP + vec2(t * 0.22, -t * 0.14)) * 0.6 + vnoise(capP * 1.9 + vec2(-t * 0.18, t * 0.20)) * 0.4;
-          float nx = vnoise(capP + vec2(e, 0.0) + vec2(t * 0.22, -t * 0.14)) * 0.6 + vnoise((capP + vec2(e, 0.0)) * 1.9 + vec2(-t * 0.18, t * 0.20)) * 0.4;
-          float nz = vnoise(capP + vec2(0.0, e) + vec2(t * 0.22, -t * 0.14)) * 0.6 + vnoise((capP + vec2(0.0, e)) * 1.9 + vec2(-t * 0.18, t * 0.20)) * 0.4;
-          grad += vec2((nx - n0) / e, (nz - n0) / e) * 0.0042 * ampMask;
+          vec2 capP = p * vec2(2.0, 4.4);
+          float e = 0.06;
+          float n0 = vnoise(capP + vec2(t * 0.16, -t * 0.10));
+          float nx = vnoise(capP + vec2(e, 0.0) + vec2(t * 0.16, -t * 0.10));
+          float nz = vnoise(capP + vec2(0.0, e) + vec2(t * 0.16, -t * 0.10));
+          grad += vec2((nx - n0) / e, (nz - n0) / e) * 0.0022 * ampMask;
 
-          // 4) Delicate concentric pond rings around two quiet spots
           float r1 = length(p - vec2(-2.6, 1.4));
-          grad += normalize(p - vec2(-2.6, 1.4) + 1e-4) * cos(r1 * 11.0 - t * 2.2) * exp(-r1 * 0.95) * 0.0045;
+          grad += normalize(p - vec2(-2.6, 1.4) + 1e-4) * cos(r1 * 10.0 - t * 1.6) * exp(-r1 * 1.05) * 0.0024;
           float r2 = length(p - vec2(3.4, -0.8));
-          grad += normalize(p - vec2(3.4, -0.8) + 1e-4) * cos(r2 * 10.0 - t * 1.9 + 1.8) * exp(-r2 * 1.05) * 0.0040;
+          grad += normalize(p - vec2(3.4, -0.8) + 1e-4) * cos(r2 * 9.0 - t * 1.4 + 1.8) * exp(-r2 * 1.15) * 0.0020;
 
           return grad;
         }
@@ -519,13 +515,13 @@
               minDist = min(minDist, d);
             }
           }
-          return pow(clamp(minDist, 0.0, 1.0), 5.5);
+          return pow(clamp(minDist, 0.0, 1.0), 4.0);
         }
 
         float causticPattern(vec2 p, float t) {
-          float c1 = causticLayer(p * 3.4 + vec2(t * 0.09, -t * 0.06));
-          float c2 = causticLayer(p * 4.8 + vec2(-t * 0.07, t * 0.08) + vec2(4.1, 2.3));
-          return clamp((c1 + c2) * 0.85, 0.0, 1.0);
+          float c1 = causticLayer(p * 3.0 + vec2(t * 0.07, -t * 0.04));
+          float c2 = causticLayer(p * 4.2 + vec2(-t * 0.05, t * 0.06) + vec2(4.1, 2.3));
+          return clamp((c1 + c2) * 0.65, 0.0, 1.0);
         }
 
         float D_GGX(float NdotH, float alpha) {
@@ -551,53 +547,53 @@
           float cosThetaT = max(abs(refracted.y), 0.25);
           float opticalPath = depth / cosThetaT;
 
-          // Real-world clear mineral-teal oasis water with sharp delicate caustics
-          vec3 sigma = vec3(1.85, 0.44, 0.36);
-          vec3 transmittance = exp(-sigma * opticalPath * 1.25);
+          // Deep tranquil absorption so reflections stay rich and natural
+          vec3 sigma = vec3(2.25, 0.62, 0.52);
+          vec3 transmittance = exp(-sigma * opticalPath * 1.35);
 
-          // Snell's-law refracted underwater sand bed with wind ripples & fine grain
-          vec2 floorSample = p + refracted.xz * (depth / cosThetaT) * 0.38;
-          float bedRipple = sin(floorSample.x * 4.2 + sin(floorSample.y * 1.8) * 1.6) * 0.5 + 0.5;
-          float bedGrain = vnoise(floorSample * 7.5);
-          vec3 sandBed = vec3(0.54, 0.43, 0.28) * (0.90 + 0.14 * bedRipple + 0.08 * bedGrain);
+          // Snell's-law refracted underwater sand bed with subtle wind ripples
+          vec2 floorSample = p + refracted.xz * (depth / cosThetaT) * 0.35;
+          float bedRipple = sin(floorSample.x * 3.6 + sin(floorSample.y * 1.6) * 1.4) * 0.5 + 0.5;
+          float bedGrain = vnoise(floorSample * 6.5);
+          vec3 sandBed = vec3(0.56, 0.44, 0.29) * (0.92 + 0.10 * bedRipple + 0.06 * bedGrain);
 
-          // RGB Chromatic Dispersion Caustics (wavelength-dependent refraction)
-          vec2 dispDir = normalize(refracted.xz + 1e-4) * 0.022 * clamp(depth, 0.0, 1.2);
+          // Soft, dreamy RGB chromatic dispersion caustics
+          vec2 dispDir = normalize(refracted.xz + 1e-4) * 0.018 * clamp(depth, 0.0, 1.0);
           float cR = causticPattern(floorSample - dispDir, uTime);
           float cG = causticPattern(floorSample, uTime);
           float cB = causticPattern(floorSample + dispDir, uTime);
-          float causticMask = smoothstep(0.04, 0.20, depth) * smoothstep(2.2, 0.30, depth);
-          vec3 causticRGB = vec3(cR * 1.05, cG * 0.98, cB * 0.86) * causticMask * 0.65;
+          float causticMask = smoothstep(0.04, 0.20, depth) * smoothstep(1.8, 0.25, depth);
+          vec3 causticRGB = vec3(cR * 1.04, cG * 0.98, cB * 0.88) * causticMask * 0.38;
           vec3 sandFloor = sandBed + causticRGB;
 
-          // Subsurface scattering in shallow water & wavelets
+          // Deep tranquil mineral-emerald scatter
           float sssAngle = pow(max(dot(V, -uSunDir), 0.0), 3.5);
-          float waveSlope = clamp(length(grad) * 28.0, 0.0, 1.0);
-          vec3 scatterCol = vec3(0.025, 0.16, 0.17) + vec3(0.06, 0.18, 0.14) * (sssAngle * 0.50 + waveSlope * 0.22);
+          float waveSlope = clamp(length(grad) * 24.0, 0.0, 1.0);
+          vec3 scatterCol = vec3(0.018, 0.11, 0.12) + vec3(0.04, 0.14, 0.11) * (sssAngle * 0.45 + waveSlope * 0.18);
           vec3 refractedCol = sandFloor * transmittance + scatterCol * (1.0 - transmittance);
 
           // Shoreline capillary meniscus & seamless wet-sand transition
           float meniscus = smoothstep(0.14, 0.005, depth);
-          refractedCol = mix(refractedCol, vec3(0.42, 0.32, 0.20), meniscus * 0.62);
+          refractedCol = mix(refractedCol, vec3(0.42, 0.32, 0.20), meniscus * 0.65);
 
           vec4 projUv = vUv;
-          projUv.xy += vec2(N.x * 0.032, N.z * 0.068) * projUv.w;
-          vec3 reflCol = texture2DProj(tDiffuse, projUv).rgb * 0.90;
+          projUv.xy += vec2(N.x * 0.018, N.z * 0.042) * projUv.w;
+          vec3 reflCol = texture2DProj(tDiffuse, projUv).rgb * 0.94;
 
-          float reflWeight = clamp(fresnel * 1.28 + 0.06, 0.06, 0.78);
+          float reflWeight = clamp(fresnel * 1.45 + 0.14, 0.14, 0.84);
           vec3 col = mix(refractedCol, reflCol, reflWeight);
 
-          // Dual-lobe GGX specular: crisp sun-diamond glints + soft sky sheen
+          // Dual-lobe GGX specular: delicate sun glints + soft golden sheen
           vec3 H = normalize(uSunDir + V);
           float NdotH = max(dot(N, H), 0.0);
           float NdotL = max(dot(N, uSunDir), 0.0);
-          float specSharp = D_GGX(NdotH, 0.018) * fresnel * NdotL;
-          float specBroad = D_GGX(NdotH, 0.13) * fresnel * NdotL;
-          col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.32, 1.5) + min(specBroad * 0.18, 0.4));
+          float specSharp = D_GGX(NdotH, 0.015) * fresnel * NdotL;
+          float specBroad = D_GGX(NdotH, 0.12) * fresnel * NdotL;
+          col += vec3(1.0, 0.90, 0.72) * (min(specSharp * 0.28, 1.2) + min(specBroad * 0.16, 0.35));
 
-          float foamNoise = vnoise(p * 2.8 + vec2(uTime * 0.12, -uTime * 0.10));
-          float lap = smoothstep(0.08, 0.012, depth + foamNoise * 0.018) * smoothstep(0.004, 0.025, depth);
-          col = mix(col, vec3(0.86, 0.85, 0.78), lap * 0.30);
+          float foamNoise = vnoise(p * 2.8 + vec2(uTime * 0.10, -uTime * 0.08));
+          float lap = smoothstep(0.06, 0.010, depth + foamNoise * 0.014) * smoothstep(0.004, 0.022, depth);
+          col = mix(col, vec3(0.84, 0.82, 0.76), lap * 0.10);
 
           float alpha = smoothstep(0.001, 0.13, depth);
           gl_FragColor = vec4(col, alpha);
