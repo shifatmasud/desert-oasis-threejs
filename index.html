@@ -1189,7 +1189,7 @@ float sandNoise(vec2 p) {
         float backLight = pow(clamp(dot(viewDirSSS, -uSunDir), 0.0, 1.0), 2.0);
         float throughLeaf = pow(clamp(dot(-nW, uSunDir) * 0.5 + 0.5, 0.0, 1.0), 1.6);
         float rimGlow = pow(1.0 - abs(dot(nW, viewDirSSS)), 1.7);
-        vec3 sssTint = vec3(0.98, 0.84, 0.32) * (backLight * 0.65 + throughLeaf * 0.34 + rimGlow * 0.36) + vec3(0.22, 0.19, 0.08);
+        vec3 sssTint = vec3(1.04, 0.90, 0.36) * (backLight * 0.78 + throughLeaf * 0.44 + rimGlow * 0.42) + vec3(0.28, 0.25, 0.10);
         gl_FragColor.rgb += sssTint * diffuseColor.rgb;
         #include <dithering_fragment>
         `
@@ -1311,14 +1311,14 @@ float sandNoise(vec2 p) {
         vIdx += 4;
       }
 
-      // 5-row curved 3D Megascans alpha-cutout leaflets along the rachis (wider, fuller overlap)
-      const rows = [0.0, 0.25, 0.52, 0.78, 1.0];
+      // 4-row slender, tapering V-folded Megascans alpha-cutout leaflets (studied from Quixel rkqjj)
+      const rows = [0.0, 0.32, 0.66, 1.0];
       for (let i = 1; i <= pairs; i++) {
         const t = i / (pairs + 1);
         const zBase = t * length * 0.96 + 0.14;
         const yBase = Math.sin(t * Math.PI * 0.64) * archLift - Math.pow(t, 1.75) * length * droopPower;
         const leafLen = Math.pow(Math.max(0, Math.sin(Math.pow(t, 0.72) * Math.PI)), 0.75) * maxLeafLen;
-        const cardWidth = 0.225 * (1.0 - t * 0.22);
+        const cardWidth = 0.145 * (1.0 - t * 0.34);
 
         if (t < 0.45) {
           c.copy(baseCol).lerp(midCol, t / 0.45);
@@ -1375,12 +1375,12 @@ float sandNoise(vec2 p) {
       return geo;
     }
 
-    const frondPairScale = isPhone ? 0.56 : 0.70;
+    const frondPairScale = isPhone ? 0.54 : 0.68;
     const sharedFrondGeos = [
-      createCurvedPalmFrondGeometry(4.0, 1.28, Math.round(36 * frondPairScale), 1, 0.64, 0.28),
-      createCurvedPalmFrondGeometry(3.8, 1.18, Math.round(34 * frondPairScale), 2, 0.50, 0.36),
-      createCurvedPalmFrondGeometry(4.2, 1.32, Math.round(38 * frondPairScale), 3, 0.44, 0.44),
-      createCurvedPalmFrondGeometry(3.9, 1.22, Math.round(35 * frondPairScale), 4, 0.58, 0.32)
+      createCurvedPalmFrondGeometry(4.2, 1.24, Math.round(34 * frondPairScale), 1, 0.88, 0.22),
+      createCurvedPalmFrondGeometry(3.9, 1.16, Math.round(32 * frondPairScale), 2, 0.72, 0.28),
+      createCurvedPalmFrondGeometry(4.3, 1.28, Math.round(34 * frondPairScale), 3, 0.64, 0.34),
+      createCurvedPalmFrondGeometry(4.0, 1.20, Math.round(32 * frondPairScale), 4, 0.80, 0.26)
     ];
     const coconutGeo = new THREE.SphereGeometry(0.16, 10, 10);
     const coconutMat = new THREE.MeshStandardMaterial({ color: 0x5d3d1e, roughness: 0.72 });
@@ -1453,14 +1453,15 @@ float sandNoise(vec2 p) {
       const mergedNuts = mergeGeometries(nutGeos, false);
       crown.add(new THREE.Mesh(mergedNuts, coconutMat));
 
-      // 3-tier lush rounded palm crown + compact inner crown core (merged into 1 draw call per palm)
-      const upperCount = Math.round(frondCount * 0.28);
-      const midCount = Math.round(frondCount * 0.40);
-      const lowerCount = frondCount - upperCount - midCount;
+      // 3-tier airy arching palm crown (studied from Quixel rkqjj) + 5 inner spear fronds
+      const adjCount = Math.max(14, Math.round(frondCount * 0.78));
+      const upperCount = Math.round(adjCount * 0.32);
+      const midCount = Math.round(adjCount * 0.40);
+      const lowerCount = adjCount - upperCount - midCount;
       const tierSpecs = [
-        { count: upperCount, pitchMin: 0.30, pitchMax: 0.56, scaleMult: 1.00, offset: 0.0 },
-        { count: midCount,   pitchMin: 0.02, pitchMax: 0.24, scaleMult: 1.00, offset: 0.23 },
-        { count: lowerCount, pitchMin: -0.26, pitchMax: -0.05, scaleMult: 1.00, offset: 0.47 }
+        { count: upperCount, pitchMin: 0.38, pitchMax: 0.68, scaleMult: 0.96, offset: 0.0 },
+        { count: midCount,   pitchMin: 0.08, pitchMax: 0.30, scaleMult: 1.02, offset: 0.23 },
+        { count: lowerCount, pitchMin: -0.22, pitchMax: -0.02, scaleMult: 0.98, offset: 0.47 }
       ];
 
       const crownFrondGeos = [];
@@ -1486,13 +1487,13 @@ float sandNoise(vec2 p) {
         }
       }
 
-      // Soft inner core fronds matching crown length so the top stays full
-      for (let i = 0; i < 8; i++) {
+      // Soft inner spear fronds matching rkqjj upward-arching core
+      for (let i = 0; i < 5; i++) {
         frondDummy.position.set(0, 0, 0);
-        frondDummy.scale.setScalar(0.86 * scale);
+        frondDummy.scale.setScalar(0.84 * scale);
         frondDummy.rotation.set(
-          -0.68 - (i % 2) * 0.14,
-          (i / 8) * Math.PI * 2 + 0.2,
+          -0.74 - (i % 2) * 0.14,
+          (i / 5) * Math.PI * 2 + 0.2,
           (i % 2 === 0 ? 1 : -1) * 0.08
         );
         frondDummy.updateMatrix();
@@ -1559,6 +1560,16 @@ float sandNoise(vec2 p) {
         holder.rotation.y = idx * 1.4;
         holder.add(clone);
         scene.add(holder);
+      });
+
+      // Graft real 3D Quixel rkqjj photogrammetric palm clusters into the heart of every tall palm crown
+      palmCrowns.forEach((pc, idx) => {
+        const src = palmVars[idx % palmVars.length];
+        const crownCore = src.clone();
+        crownCore.scale.setScalar(0.0115 * pc.scale);
+        crownCore.position.set(0, 0.15 * pc.scale, 0);
+        crownCore.rotation.set(Math.PI * 0.5, idx * 1.7, 0);
+        pc.crown.add(crownCore);
       });
     });
 
