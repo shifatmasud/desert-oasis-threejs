@@ -1539,8 +1539,8 @@ float sandNoise(vec2 p) {
       if (palmVars.length === 0) return;
 
       const bushSpots = [
-        [-10.6, 3.8, 0.95], [-11.4, 0.4, 1.05], [-9.4, -3.6, 0.9],
-        [10.6, 3.8, 0.95],  [11.4, 0.4, 1.05],  [9.4, -3.6, 0.9],
+        [-10.6, 3.8, 0.95], [-11.4, 0.4, 1.05], [-9.4, -3.6, 0.9], [-10.8, 7.2, 0.88], [-7.2, -5.6, 0.82],
+        [10.6, 3.8, 0.95],  [11.4, 0.4, 1.05],  [9.4, -3.6, 0.9],  [10.8, 7.2, 0.88],  [7.2, -5.6, 0.82],
         [-4.9, 11.2, 0.85], [4.9, 11.2, 0.85]
       ];
       bushSpots.forEach(([px, pz, ps], idx) => {
@@ -1576,10 +1576,10 @@ float sandNoise(vec2 p) {
       if (fernVars.length === 0) return;
 
       const fernSpots = [
-        [-4.2, 11.4, 1.8], [-2.9, 13.0, 1.9], [-1.7, 14.3, 1.7], [-4.8, 12.6, 1.6],
-        [4.2, 11.4, 1.7],  [2.9, 13.0, 1.8],  [1.9, 14.2, 1.5],  [4.8, 12.4, 1.6],
-        [-10.4, 4.2, 1.6], [-11.0, 1.2, 1.7], [-9.8, -2.2, 1.5], [-7.8, -4.6, 1.4],
-        [10.4, 4.2, 1.6],  [11.0, 1.2, 1.7],  [9.8, -2.2, 1.5],  [7.8, -4.6, 1.4]
+        [-4.2, 11.4, 1.8], [-2.9, 13.0, 1.9], [-1.7, 14.3, 1.7], [-4.8, 12.6, 1.6], [-5.8, 9.6, 1.65],
+        [4.2, 11.4, 1.7],  [2.9, 13.0, 1.8],  [1.9, 14.2, 1.5],  [4.8, 12.4, 1.6],  [5.8, 9.6, 1.65],
+        [-10.4, 4.2, 1.6], [-11.0, 1.2, 1.7], [-9.8, -2.2, 1.5], [-7.8, -4.6, 1.4], [-5.4, -6.5, 1.35],
+        [10.4, 4.2, 1.6],  [11.0, 1.2, 1.7],  [9.8, -2.2, 1.5],  [7.8, -4.6, 1.4],  [5.4, -6.5, 1.35]
       ];
       fernSpots.forEach(([fx, fz, fs], idx) => {
         const src = fernVars[idx % fernVars.length];
@@ -1832,37 +1832,63 @@ float sandNoise(vec2 p) {
     }
 
     const bankSpots = [
-      [-11.6, 4.4, 2.3, 13, 0.55, 1.15], [-12.2, 1.0, 2.4, 13, 0.5, 1.15], [-11.2, -2.4, 2.2, 11, 0.5, 1.1],
-      [-9.6, -1.2, 1.6, 8, 0.45, 1.15], [-7.8, -4.0, 1.6, 8, 0.45, 1.12],
-      [-8.8, -5.0, 2.1, 11, 0.45, 1.05], [-5.6, -6.8, 1.8, 9, 0.4, 1.0],
-      [12.2, 4.4, 2.3, 13, 0.55, 1.15],  [12.8, 1.0, 2.4, 13, 0.5, 1.15],  [11.8, -2.4, 2.2, 11, 0.5, 1.1],
-      [9.8, -1.2, 1.6, 8, 0.45, 1.15],   [7.8, -4.0, 1.6, 8, 0.45, 1.12],
-      [9.4, -5.0, 2.1, 11, 0.45, 1.05],  [6.0, -6.8, 1.8, 9, 0.4, 1.0],
-      [-5.2, 10.6, 2.0, 14, 0.85, 1.25], [-3.6, 12.6, 1.6, 14, 0.92, 1.25], [-2.1, 14.2, 1.2, 12, 0.95, 1.20],
-      [5.2, 10.6, 2.0, 14, 0.40, 1.25],  [3.6, 12.6, 1.6, 14, 0.35, 1.25],  [2.3, 14.0, 1.1, 10, 0.30, 1.15]
+      [-11.6, 4.4, 2.3, 16, 0.65, 1.20], [-12.2, 1.0, 2.4, 16, 0.60, 1.20], [-11.2, -2.4, 2.2, 14, 0.60, 1.15],
+      [-10.6, 7.6, 2.1, 14, 0.72, 1.18], [-11.8, 6.2, 1.9, 12, 0.65, 1.12],
+      [-9.6, -1.2, 1.6, 11, 0.55, 1.15], [-7.8, -4.0, 1.6, 11, 0.55, 1.12],
+      [-8.8, -5.0, 2.1, 14, 0.55, 1.10], [-5.6, -6.8, 1.8, 12, 0.50, 1.05], [-3.8, -7.2, 1.5, 10, 0.50, 1.00],
+      [12.2, 4.4, 2.3, 16, 0.65, 1.20],  [12.8, 1.0, 2.4, 16, 0.60, 1.20],  [11.8, -2.4, 2.2, 14, 0.60, 1.15],
+      [10.6, 7.6, 2.1, 14, 0.72, 1.18],  [11.8, 6.2, 1.9, 12, 0.65, 1.12],
+      [9.8, -1.2, 1.6, 11, 0.55, 1.15],   [7.8, -4.0, 1.6, 11, 0.55, 1.12],
+      [9.4, -5.0, 2.1, 14, 0.55, 1.10],  [6.0, -6.8, 1.8, 12, 0.50, 1.05],  [4.0, -7.2, 1.5, 10, 0.50, 1.00],
+      [-5.2, 10.6, 2.0, 18, 0.88, 1.28], [-3.6, 12.6, 1.6, 18, 0.94, 1.28], [-2.1, 14.2, 1.2, 14, 0.95, 1.22],
+      [5.2, 10.6, 2.0, 18, 0.52, 1.28],  [3.6, 12.6, 1.6, 18, 0.48, 1.28],  [2.3, 14.0, 1.1, 12, 0.42, 1.18]
     ];
     for (const [bx, bz, rad, cnt, fb, sb] of bankSpots) {
       addLushBankCluster(bx, bz, rad, cnt, fb, sb);
     }
 
     // Shoreline reeds & sedge tufts strictly on the lush left/right banks
-    for (let i = 0; i < 65; i++) {
+    for (let i = 0; i < 125; i++) {
       const a = rand() * Math.PI * 2;
       if (Math.cos(a) > -0.35 && Math.cos(a) < 0.35 && Math.sin(a) > 0.35) continue;
       if (Math.cos(a) > -0.45 && Math.cos(a) < 0.45 && Math.sin(a) < -0.55) continue;
-      const rx = Math.cos(a) * (12.2 + (rand() - 0.5) * 1.2);
-      const rz = 0.6 + Math.sin(a) * (8.2 + (rand() - 0.5) * 1.0);
+      const rx = Math.cos(a) * (12.2 + (rand() - 0.5) * 1.3);
+      const rz = 0.6 + Math.sin(a) * (8.2 + (rand() - 0.5) * 1.1);
       const y = getTerrainHeight(rx, rz);
-      if (y < 0.01 || y > 0.48) continue;
-      for (let b = 0; b < 7; b++) {
-        const sc = 0.65 + rand() * 0.65;
+      if (y < 0.01 || y > 0.50) continue;
+      for (let b = 0; b < 9; b++) {
+        const sc = 0.65 + rand() * 0.70;
         pushGeo(
           grassMat,
           grassGeo,
-          new THREE.Vector3(rx + (rand() - 0.5) * 0.25, y - 0.04, rz + (rand() - 0.5) * 0.25),
+          new THREE.Vector3(rx + (rand() - 0.5) * 0.28, y - 0.04, rz + (rand() - 0.5) * 0.28),
           new THREE.Euler((rand() - 0.5) * 0.35, rand() * Math.PI * 2, 0),
           new THREE.Vector3(sc, sc, sc)
         );
+      }
+    }
+
+    // Sheltered-cove water lily pads & lotus blooms (batched into 2 draw calls)
+    const lilyPadGeo = new THREE.CircleGeometry(0.24, 14, 0.22, Math.PI * 1.84);
+    lilyPadGeo.rotateX(-Math.PI / 2);
+    const lilyPadMat = new THREE.MeshStandardMaterial({ color: 0x3b6e3c, roughness: 0.44, side: THREE.DoubleSide });
+    applyFoliageSSS(lilyPadMat, 0.45);
+    const lotusGeo = new THREE.ConeGeometry(0.085, 0.09, 6);
+    lotusGeo.rotateX(Math.PI);
+    lotusGeo.translate(0, 0.045, 0);
+    const lotusMat = new THREE.MeshStandardMaterial({ color: 0xf7cfd6, roughness: 0.42, side: THREE.DoubleSide });
+    applyFoliageSSS(lotusMat, 0.60);
+    const lilyCoves = [
+      [-9.2, 2.2], [-9.6, 2.7], [-8.8, 1.7], [-8.9, -1.6], [-8.4, -2.1],
+      [9.1, 2.4],  [9.5, 1.9],  [8.6, 2.8],  [8.8, -1.8],  [8.3, -2.3],
+      [-7.2, 5.2], [-6.8, 5.6], [7.2, 5.1],  [6.8, 5.5]
+    ];
+    for (let i = 0; i < lilyCoves.length; i++) {
+      const [lx, lz] = lilyCoves[i];
+      const sc = 0.78 + rand() * 0.55;
+      pushGeo(lilyPadMat, lilyPadGeo, new THREE.Vector3(lx, 0.014, lz), new THREE.Euler(0, rand() * Math.PI * 2, 0), new THREE.Vector3(sc, 1, sc));
+      if (i % 2 === 0) {
+        pushGeo(lotusMat, lotusGeo, new THREE.Vector3(lx + 0.03, 0.018, lz - 0.02), new THREE.Euler(0, rand() * Math.PI * 2, 0), new THREE.Vector3(0.9 + rand() * 0.3, 1, 0.9 + rand() * 0.3));
       }
     }
 
@@ -1884,6 +1910,8 @@ float sandNoise(vec2 p) {
     }
     addAgaveRosette(1.35, 14.3, 0.92);
     addAgaveRosette(3.55, 13.4, 1.18);
+    addAgaveRosette(-3.75, 11.9, 1.04);
+    addAgaveRosette(4.45, 11.3, 0.95);
 
     // Layer 2: Dry golden desert scrub & grass tufts bridging lush banks to outer sand
     const dryGrassMat = new THREE.MeshStandardMaterial({
