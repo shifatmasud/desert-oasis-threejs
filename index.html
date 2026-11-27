@@ -116,9 +116,11 @@
           vec4 tex = texture2D(tDiffuse, vUv);
           vec3 col = tex.rgb;
 
-          // Clean photographic golden-hour filmic curve (no milky wash)
+          // Unified golden-hour sunset color grade (lifts crushed black shadows into warm plum)
           float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-          vec3 highlightTint = vec3(1.03, 0.99, 0.93);
+          vec3 shadowLift = vec3(0.042, 0.024, 0.042) * (1.0 - smoothstep(0.0, 0.32, lum));
+          col += shadowLift;
+          vec3 highlightTint = vec3(1.04, 0.99, 0.91);
           col = mix(col, col * highlightTint, smoothstep(0.25, 0.85, lum));
 
           // Subtle natural filmic contrast
@@ -155,7 +157,7 @@
     // ------------------------------------------------------------
     // 2. Golden-Hour Lighting (Low Sun from Left -> Sculpted Slip-Faces)
     // ------------------------------------------------------------
-    const hemiLight = new THREE.HemisphereLight(0xd4a8c4, 0xd49c66, 0.92);
+    const hemiLight = new THREE.HemisphereLight(0xffdfb8, 0xd8a870, 1.35);
     scene.add(hemiLight);
 
     const sunDir = new THREE.Vector3(-72, 22, -22).normalize();
@@ -169,7 +171,8 @@
     sunLight.shadow.camera.right = 64;
     sunLight.shadow.camera.top = 52;
     sunLight.shadow.camera.bottom = -52;
-    sunLight.shadow.bias = -0.00035;
+    sunLight.shadow.bias = -0.0001;
+    sunLight.shadow.normalBias = 0.05;
     scene.add(sunLight);
 
     const bounceLight = new THREE.DirectionalLight(0xffcfa0, 0.95);
@@ -228,12 +231,12 @@
           vec3 dir = normalize(vWorldPos);
           float h = clamp(dir.y, 0.0, 1.0);
 
-          vec3 horizon = vec3(1.00, 0.81, 0.62);
-          vec3 roseMid = vec3(0.88, 0.68, 0.74);
-          vec3 zenith  = vec3(0.42, 0.50, 0.76);
+          vec3 horizon = vec3(1.00, 0.78, 0.56);
+          vec3 roseMid = vec3(0.84, 0.60, 0.70);
+          vec3 zenith  = vec3(0.32, 0.42, 0.72);
 
-          vec3 col = mix(horizon, roseMid, smoothstep(0.0, 0.15, h));
-          col = mix(col, zenith, smoothstep(0.10, 0.38, h));
+          vec3 col = mix(horizon, roseMid, smoothstep(0.0, 0.16, h));
+          col = mix(col, zenith, smoothstep(0.11, 0.36, h));
 
           float sunAmt = max(dot(dir, uSunDir), 0.0);
           col += vec3(1.0, 0.78, 0.46) * pow(sunAmt, 2.8) * 0.34;
@@ -546,11 +549,13 @@ float sandNoise(vec2 p) {
         }
 
         vec2 waveGradient(vec2 p, float t, float d) {
-          // Gentle horizontal pond wave-ripples that softly break up palm reflections
+          // Crisp horizontal wind-wave crests (stronger on left/far pond like reference)
           vec2 grad = vec2(0.0);
-          grad += vec2( 0.85,  0.52) * cos(dot(p, vec2(0.65, 0.40)) - t * 0.55) * 0.0018;
-          grad += vec2(-0.55,  0.83) * cos(dot(p, vec2(-0.48, 0.78)) - t * 0.45) * 0.0014;
-          grad += vec2( 0.15,  1.00) * cos(p.y * 5.6 + vnoise(p * 1.4) * 2.6 - t * 1.1) * 0.0068 * smoothstep(0.03, 0.35, d);
+          grad += vec2( 0.85,  0.52) * cos(dot(p, vec2(0.65, 0.40)) - t * 0.55) * 0.0020;
+          grad += vec2(-0.55,  0.83) * cos(dot(p, vec2(-0.48, 0.78)) - t * 0.45) * 0.0016;
+          float leftWaveMask = smoothstep(4.0, -7.0, p.x) * 0.65 + 0.35;
+          grad += vec2( 0.12,  1.00) * cos(p.y * 7.8 + vnoise(p * 1.2) * 3.2 - t * 1.2) * 0.0115 * leftWaveMask * smoothstep(0.04, 0.35, d);
+          grad += vec2(-0.08,  1.00) * cos(p.y * 13.5 + vnoise(p * 2.4) * 2.1 - t * 1.6) * 0.0055 * leftWaveMask * smoothstep(0.06, 0.40, d);
 
           // Ultra-soft cat's-paw breeze patches
           vec2 windUv = p * vec2(0.12, 0.28) + vec2(t * 0.018, -t * 0.008);
@@ -634,9 +639,9 @@ float sandNoise(vec2 p) {
           float cosThetaT = max(abs(refracted.y), 0.25);
           float opticalPath = depth / cosThetaT;
 
-          // Rich Caribbean turquoise-aqua absorption (kills pale silver-white washout)
-          vec3 sigma = vec3(2.85, 0.38, 0.44);
-          vec3 transmittance = exp(-sigma * opticalPath * 1.30);
+          // Deep sapphire-teal in far/left pond grading to luminous seafoam-turquoise in sunny shallows
+          vec3 sigma = vec3(3.20, 0.48, 0.42);
+          vec3 transmittance = exp(-sigma * opticalPath * 1.35);
 
           // Snell's-law refracted underwater sand bed with subtle wind ripples
           vec2 floorSample = p + refracted.xz * (depth / cosThetaT) * 0.35;
@@ -660,10 +665,12 @@ float sandNoise(vec2 p) {
           vec3 causticRGB = vec3(cR * 1.04, cG * 0.98, cB * 0.88) * causticMask * 0.36 * mix(1.0, 0.30, foliageShadow);
           vec3 sandFloor = sandBed + causticRGB;
 
-          // Luminous turquoise-aqua oasis scatter matching reference
+          // Deep sapphire-teal interior + sunlit turquoise shallows
           float sssAngle = pow(max(dot(V, -uSunDir), 0.0), 3.5);
           float waveSlope = clamp(length(grad) * 24.0, 0.0, 1.0);
-          vec3 scatterCol = (vec3(0.04, 0.34, 0.35) + vec3(0.06, 0.24, 0.22) * (sssAngle * 0.45 + waveSlope * 0.18)) * mix(1.0, 0.52, foliageShadow);
+          float farDeep = smoothstep(4.0, -6.0, p.y);
+          vec3 deepCol = mix(vec3(0.04, 0.34, 0.36), vec3(0.02, 0.16, 0.24), farDeep);
+          vec3 scatterCol = (deepCol + vec3(0.06, 0.24, 0.22) * (sssAngle * 0.45 + waveSlope * 0.18)) * mix(1.0, 0.52, foliageShadow);
           vec3 refractedCol = sandFloor * transmittance + scatterCol * (1.0 - transmittance);
 
           // Shoreline capillary meniscus & seamless wet-sand transition
@@ -671,10 +678,10 @@ float sandNoise(vec2 p) {
           refractedCol = mix(refractedCol, vec3(0.58, 0.45, 0.29), meniscus * 0.62);
 
           vec4 projUv = vUv;
-          projUv.xy += vec2(N.x * 0.038, N.z * 0.088) * projUv.w;
-          vec3 reflCol = texture2DProj(tDiffuse, projUv).rgb * 0.90;
+          projUv.xy += vec2(N.x * 0.042, N.z * 0.095) * projUv.w;
+          vec3 reflCol = texture2DProj(tDiffuse, projUv).rgb * 0.88;
 
-          float reflWeight = clamp(fresnel * 0.72 + 0.06, 0.06, 0.42);
+          float reflWeight = clamp(fresnel * 1.05 + 0.06, 0.06, 0.62);
           vec3 col = mix(refractedCol, reflCol, reflWeight);
 
           // Dual-lobe GGX specular: delicate sun glints + soft golden sheen
@@ -1780,6 +1787,7 @@ float sandNoise(vec2 p) {
     let contactIdx = 0;
     for (let i = 0; i < 48; i++) {
       const ang = (i / 48) * Math.PI * 2 + rand() * 0.20;
+      if (Math.sin(ang) > 0.35 && Math.abs(Math.cos(ang)) < 0.65) continue;
       const rad = 0.99 + rand() * 0.08;
       const sx = Math.cos(ang) * 12.6 * rad;
       const sz = 0.6 + Math.sin(ang) * 8.3 * rad;
@@ -1802,6 +1810,7 @@ float sandNoise(vec2 p) {
     subStoneInst.receiveShadow = true;
     for (let i = 0; i < 14; i++) {
       const ang = (i / 14) * Math.PI * 2 + rand() * 0.35;
+      if (Math.sin(ang) > 0.25 && Math.abs(Math.cos(ang)) < 0.72) continue;
       const sx = Math.cos(ang) * (8.4 + rand() * 2.6);
       const sz = 0.6 + Math.sin(ang) * (5.2 + rand() * 2.0);
       const sy = getTerrainHeight(sx, sz) - 0.02;
