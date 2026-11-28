@@ -204,10 +204,12 @@ function createDesertTerrain(sunDir) {
       .replace('#include <color_fragment>', /* glsl */ `
         #include <color_fragment>
         {
-          vec2 sandUV = vTerrainWorldPos.xz * 0.16;
-          vec3 scanSand = texture2D(uSandDiff, sandUV).rgb;
+          vec2 uvA = vTerrainWorldPos.xz * 0.14;
+          vec2 uvB = (mat2(0.798, -0.602, 0.602, 0.798) * vTerrainWorldPos.xz) * 0.085 + vec2(3.7, 1.9);
+          float tileBlend = smoothstep(0.22, 0.78, sNoise(vTerrainWorldPos.xz * 0.065));
+          vec3 scanSand = mix(texture2D(uSandDiff, uvA).rgb, texture2D(uSandDiff, uvB).rgb, tileBlend);
           float sandLuma = dot(scanSand, vec3(0.299, 0.587, 0.114));
-          float microTint = mix(0.88, 1.12, clamp(sandLuma * 1.45, 0.0, 1.0));
+          float microTint = mix(0.94, 1.06, clamp((sandLuma - 0.18) * 1.6 + 0.5, 0.0, 1.0));
           diffuseColor.rgb *= microTint;
         }
       `)
@@ -243,13 +245,18 @@ function createDesertTerrain(sunDir) {
           float farDemMask = smoothstep(-14.0, -30.0, vTerrainWorldPos.z);
           vec2 demSlope = vec2(dL - dR, dD - dU) * 0.22 * farDemMask;
 
-          vec3 sandN = texture2D(uSandNor, vTerrainWorldPos.xz * 0.34).xyz * 2.0 - 1.0;
-          float wWarp = sNoise(vTerrainWorldPos.xz * 0.24) * 3.5;
-          float fineRip = sin(vTerrainWorldPos.z * 7.2 - vTerrainWorldPos.x * 2.4 + wWarp * 1.9) * 0.038 * nearFade * (0.35 + 0.65 * sNoise(vTerrainWorldPos.xz * 0.15));
-          float grainFade = 1.0 - smoothstep(6.0, 42.0, camDist);
-          vec3 duneRipN = texture2D(uDuneRippleNor, vTerrainWorldPos.xz * 0.13).xyz * 2.0 - 1.0;
+          vec2 sUvA = vTerrainWorldPos.xz * 0.28;
+          vec2 sUvB = (mat2(0.798, -0.602, 0.602, 0.798) * vTerrainWorldPos.xz) * 0.17 + vec2(2.1, 4.3);
+          float sMix = smoothstep(0.25, 0.75, sNoise(vTerrainWorldPos.xz * 0.07));
+          vec3 sandN = mix(texture2D(uSandNor, sUvA).xyz, texture2D(uSandNor, sUvB).xyz, sMix) * 2.0 - 1.0;
+          float wWarp = sNoise(vTerrainWorldPos.xz * 0.22) * 3.2;
+          float fineRip = sin(vTerrainWorldPos.z * 6.4 - vTerrainWorldPos.x * 2.2 + wWarp * 1.6) * 0.026 * nearFade * (0.35 + 0.65 * sNoise(vTerrainWorldPos.xz * 0.14));
+          float grainFade = 1.0 - smoothstep(5.0, 32.0, camDist);
+          vec2 dUvA = vTerrainWorldPos.xz * 0.095;
+          vec2 dUvB = (mat2(0.866, -0.500, 0.500, 0.866) * vTerrainWorldPos.xz) * 0.068 + vec2(5.2, 1.4);
+          vec3 duneRipN = mix(texture2D(uDuneRippleNor, dUvA).xyz, texture2D(uDuneRippleNor, dUvB).xyz, sMix) * 2.0 - 1.0;
           float duneRipMask = smoothstep(-6.0, -14.0, vTerrainWorldPos.z) * smoothstep(0.12, 0.85, vTerrainWorldPos.y);
-          vec2 totalPert = demSlope + duneRipN.xy * 0.54 * duneRipMask + vec2(fineRip * 0.25, fineRip) + sandN.xy * 0.28 * grainFade;
+          vec2 totalPert = demSlope * 0.75 + duneRipN.xy * 0.24 * duneRipMask + vec2(fineRip * 0.25, fineRip) + sandN.xy * 0.10 * grainFade;
 
           vec3 viewPerturb = (viewMatrix * vec4(totalPert.x, 0.0, totalPert.y, 0.0)).xyz;
           normal = normalize(normal + viewPerturb);
@@ -350,8 +357,8 @@ function createOasisWater(sunDir) {
     in float aDepth;
     uniform float uTime;
     uniform vec4 uRipples[6];
-    uniform vec4 uWakes[12];
-    uniform vec2 uWakeDir[12];
+    uniform vec4 uWakes[18];
+    uniform vec2 uWakeDir[18];
     out vec3 vWorldPos;
     out vec4 vClipPos;
     out float vDepth;
@@ -372,20 +379,20 @@ function createOasisWater(sunDir) {
         }
       }
       // 2) Continuous mouse hover / touch scrub directional V-wake wave trails (physical Y vertex displacement)
-      for (int w = 0; w < 12; w++) {
+      for (int w = 0; w < 18; w++) {
         vec4 wk = uWakes[w];
         float age = uTime - wk.z;
-        if (wk.w > 0.001 && age >= 0.0 && age < 2.6) {
+        if (wk.w > 0.001 && age >= 0.0 && age < 3.4) {
           vec2 dVec = p.xz - wk.xy;
           vec2 dir = uWakeDir[w];
           vec2 perp = vec2(-dir.y, dir.x);
           float along = dot(dVec, dir);
           float across = dot(dVec, perp);
           float behind = max(0.0, -along);
-          float spread = 0.14 + age * 0.58 + behind * 0.38;
+          float spread = 0.18 + age * 0.72 + behind * 0.42;
           float vArm = abs(across) - spread;
-          float armEnv = exp(-vArm * vArm * 14.0) * exp(-abs(along + age * 0.35) * 1.35) * exp(-age * 1.15) * wk.w;
-          dy += sin(vArm * 15.0 - age * 7.5) * armEnv * 0.055;
+          float armEnv = exp(-vArm * vArm * 6.5) * exp(-abs(along + age * 0.42) * 0.95) * exp(-age * 0.82) * wk.w;
+          dy += sin(vArm * 11.0 - age * 8.0) * armEnv * 0.115;
         }
       }
       p.y += dy * waveMask;
@@ -405,8 +412,8 @@ function createOasisWater(sunDir) {
     uniform float uTime;
     uniform float uReflectStrength;
     uniform vec4 uRipples[6];
-    uniform vec4 uWakes[12];
-    uniform vec2 uWakeDir[12];
+    uniform vec4 uWakes[18];
+    uniform vec2 uWakeDir[18];
 
     in vec3 vWorldPos;
     in vec4 vClipPos;
@@ -451,20 +458,20 @@ function createOasisWater(sunDir) {
         }
       }
       // 2) Continuous mouse hover / touch scrub directional V-wake trails (matching vertex deformation)
-      for (int w = 0; w < 12; w++) {
+      for (int w = 0; w < 18; w++) {
         vec4 wk = uWakes[w];
         float age = t - wk.z;
-        if (wk.w > 0.001 && age >= 0.0 && age < 2.6) {
+        if (wk.w > 0.001 && age >= 0.0 && age < 3.4) {
           vec2 dVec = p - wk.xy;
           vec2 dir = uWakeDir[w];
           vec2 perp = vec2(-dir.y, dir.x);
           float along = dot(dVec, dir);
           float across = dot(dVec, perp);
           float behind = max(0.0, -along);
-          float spread = 0.14 + age * 0.58 + behind * 0.38;
+          float spread = 0.18 + age * 0.72 + behind * 0.42;
           float vArm = abs(across) - spread;
-          float armEnv = exp(-vArm * vArm * 14.0) * exp(-abs(along + age * 0.35) * 1.35) * exp(-age * 1.15) * wk.w;
-          float crest = cos(vArm * 15.0 - age * 7.5) * armEnv * 0.32;
+          float armEnv = exp(-vArm * vArm * 6.5) * exp(-abs(along + age * 0.42) * 0.95) * exp(-age * 0.82) * wk.w;
+          float crest = cos(vArm * 11.0 - age * 8.0) * armEnv * 0.68;
           float sgn = across >= 0.0 ? 1.0 : -1.0;
           vec2 wakeNormalDir = normalize(perp * sgn - dir * 0.38);
           ripGrad += wakeNormalDir * crest;
@@ -570,8 +577,8 @@ function createOasisWater(sunDir) {
       uTime: { value: 0.0 },
       uReflectStrength: { value: 0.96 },
       uRipples: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, -99.0, 0.0)) },
-      uWakes: { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, -99.0, 0.0)) },
-      uWakeDir: { value: Array.from({ length: 12 }, () => new THREE.Vector2(1, 0)) },
+      uWakes: { value: Array.from({ length: 18 }, () => new THREE.Vector4(0, 0, -99.0, 0.0)) },
+      uWakeDir: { value: Array.from({ length: 18 }, () => new THREE.Vector2(1, 0)) },
     },
     transparent: true,
     depthWrite: false,
@@ -581,7 +588,7 @@ function createOasisWater(sunDir) {
   mesh.renderOrder = 2;
 
   // 3D Ballistic Water Spray & Micro-Droplets (click/tap bursts + wake crest spray)
-  const MAX_SPRAY = 220;
+  const MAX_SPRAY = 900;
   const sprayPos = new Float32Array(MAX_SPRAY * 3);
   const sprayVel = new Float32Array(MAX_SPRAY * 3);
   const sprayLife = new Float32Array(MAX_SPRAY);
@@ -608,7 +615,7 @@ function createOasisWater(sunDir) {
       void main() {
         vAlpha = clamp(aLife, 0.0, 1.0);
         vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = aSize * uPixelRatio * (18.0 / max(-mvPos.z, 1.0));
+        gl_PointSize = clamp(aSize * uPixelRatio * (9.5 / max(-mvPos.z, 1.0)), 1.2, 4.2 * uPixelRatio);
         gl_Position = projectionMatrix * mvPos;
       }
     `,
@@ -637,17 +644,17 @@ function createOasisWater(sunDir) {
       const idx = sprayCursor;
       sprayCursor = (sprayCursor + 1) % MAX_SPRAY;
       const ang = Math.random() * Math.PI * 2.0;
-      const spd = (0.35 + Math.random() * 1.15) * energy;
+      const spd = (0.25 + Math.random() * 1.35) * energy;
       sprayPos[idx * 3]     = wx + (Math.random() - 0.5) * 0.16;
       sprayPos[idx * 3 + 1] = WATER_LEVEL + 0.03 + Math.random() * 0.05;
       sprayPos[idx * 3 + 2] = wz + (Math.random() - 0.5) * 0.16;
       sprayVel[idx * 3]     = Math.cos(ang) * spd + dirX * 0.85;
-      sprayVel[idx * 3 + 1] = (1.15 + Math.random() * 1.65) * energy;
+      sprayVel[idx * 3 + 1] = (0.85 + Math.random() * 1.55) * energy;
       sprayVel[idx * 3 + 2] = Math.sin(ang) * spd + dirZ * 0.85;
       const maxL = 0.42 + Math.random() * 0.48;
       sprayMaxLife[idx] = maxL;
       sprayLife[idx] = 1.0;
-      spraySize[idx] = (2.8 + Math.random() * 4.2) * (0.75 + energy * 0.35);
+      spraySize[idx] = (0.75 + Math.random() * 1.35) * (0.75 + energy * 0.30);
     }
   }
 

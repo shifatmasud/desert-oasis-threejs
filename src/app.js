@@ -185,7 +185,9 @@ function OasisApp() {
     const height = container.clientHeight || window.innerHeight || 768;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    const getDpr = () => Math.min(window.devicePixelRatio || 1, 2.0);
+    let curDpr = getDpr();
+    renderer.setPixelRatio(curDpr);
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.06;
@@ -321,8 +323,9 @@ function OasisApp() {
       mesh.position.set(m.x, m.y, m.z); mesh.rotation.y = m.ry; scene.add(mesh);
     });
 
-    const postRT = new THREE.WebGLRenderTarget(width, height, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.HalfFloatType });
-    postRT.depthTexture = new THREE.DepthTexture(width, height);
+    const rtW = Math.max(1, Math.round(width * curDpr)), rtH = Math.max(1, Math.round(height * curDpr));
+    const postRT = new THREE.WebGLRenderTarget(rtW, rtH, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.HalfFloatType });
+    postRT.depthTexture = new THREE.DepthTexture(rtW, rtH);
     postRT.depthTexture.type = THREE.UnsignedIntType;
     const postScene = new THREE.Scene();
     const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -332,7 +335,7 @@ function OasisApp() {
         tDiffuse:      { value: postRT.texture },
         tDepth:        { value: postRT.depthTexture },
         uSunScreenPos: { value: new THREE.Vector2(0.07, 0.86) },
-        uTexelSize:    { value: new THREE.Vector2(1.0 / width, 1.0 / height) },
+        uTexelSize:    { value: new THREE.Vector2(1.0 / rtW, 1.0 / rtH) },
         uGodrayWeight: { value: 0.52 },
         uBloomWeight:  { value: 0.22 },
       },
@@ -499,7 +502,7 @@ function OasisApp() {
       const ripArr = water.material.uniforms.uRipples.value;
       ripArr[rippleCursor].set(hit.x, hit.z, waterElapsed, 1.0);
       rippleCursor = (rippleCursor + 1) % ripArr.length;
-      water.spawnSpray(hit.x, hit.z, 22, 1.05);
+      water.spawnSpray(hit.x, hit.z, 72, 1.05);
       audioEngine.triggerWaterDrop(hit.nx, 0.9);
     }
 
@@ -518,14 +521,14 @@ function OasisApp() {
         if (lastHitX > 500) { lastHitX = hit.x; lastHitZ = hit.z; return; }
         const vx = hit.x - lastHitX, vz = hit.z - lastHitZ;
         const moveDist = Math.hypot(vx, vz);
-        if (nowMs - lastWakeMs > 28 && moveDist > 0.07) {
+        if (nowMs - lastWakeMs > 22 && moveDist > 0.045) {
           lastWakeMs = nowMs; lastHitX = hit.x; lastHitZ = hit.z;
           const wakeArr = water.material.uniforms.uWakes.value;
           const dirArr = water.material.uniforms.uWakeDir.value;
-          wakeArr[wakeCursor].set(hit.x, hit.z, waterElapsed, Math.min(1.0, 0.45 + speed * 0.68));
+          wakeArr[wakeCursor].set(hit.x, hit.z, waterElapsed, Math.min(1.0, (isTouch ? 0.85 : 0.62) + speed * 0.55));
           dirArr[wakeCursor].set(vx / moveDist, vz / moveDist);
           wakeCursor = (wakeCursor + 1) % wakeArr.length;
-          if (speed > 0.14) water.spawnSpray(hit.x, hit.z, 4, 0.55 + speed * 0.45, vx / moveDist, vz / moveDist);
+          if (speed > 0.08) water.spawnSpray(hit.x, hit.z, 12, 0.52 + speed * 0.48, vx / moveDist, vz / moveDist);
         }
       } else {
         lastHitX = 999; lastHitZ = 999;
@@ -533,17 +536,22 @@ function OasisApp() {
     }
 
     const domEl = renderer.domElement;
-    const onPointerDown = (e) => { isDraggingOrbit = true; downX = e.clientX; downY = e.clientY; };
+    const onPointerDown = (e) => {
+      isDraggingOrbit = true; downX = e.clientX; downY = e.clientY;
+      const hit = intersectWater(e.clientX, e.clientY);
+      if (hit && hit.x !== null) { lastHitX = hit.x; lastHitZ = hit.z; lastPtrX = hit.nx; lastPtrY = hit.ny; }
+    };
     const onPointerUp = (e) => {
       isDraggingOrbit = false;
-      if (Math.hypot(e.clientX - downX, e.clientY - downY) < 9) triggerClickRipple(e.clientX, e.clientY);
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) < 10) triggerClickRipple(e.clientX, e.clientY);
+      lastHitX = 999; lastHitZ = 999;
     };
+    const onPointerCancel = () => { isDraggingOrbit = false; lastHitX = 999; lastHitZ = 999; };
     const onPointerMove = (e) => { handleWakeTrail(e.clientX, e.clientY, e.pointerType === 'touch'); };
-    const onTouchMove = (e) => { if (e.touches && e.touches.length === 1) handleWakeTrail(e.touches[0].clientX, e.touches[0].clientY, true); };
     domEl.addEventListener('pointerdown', onPointerDown, { passive: true });
     window.addEventListener('pointerup', onPointerUp, { passive: true });
+    window.addEventListener('pointercancel', onPointerCancel, { passive: true });
     domEl.addEventListener('pointermove', onPointerMove, { passive: true });
-    domEl.addEventListener('touchmove', onTouchMove, { passive: true });
 
     function renderWithPostFX() {
       const scrubDelta = goldenScrubRef.current - 0.5;
@@ -588,8 +596,12 @@ function OasisApp() {
       const w = container.clientWidth || window.innerWidth;
       const h = container.clientHeight || window.innerHeight;
       camera.aspect = w / h; camera.updateProjectionMatrix();
-      renderer.setSize(w, h); postRT.setSize(w, h);
-      postMat.uniforms.uTexelSize.value.set(1.0 / Math.max(w, 1), 1.0 / Math.max(h, 1));
+      curDpr = getDpr();
+      renderer.setPixelRatio(curDpr);
+      renderer.setSize(w, h);
+      const nW = Math.max(1, Math.round(w * curDpr)), nH = Math.max(1, Math.round(h * curDpr));
+      postRT.setSize(nW, nH);
+      postMat.uniforms.uTexelSize.value.set(1.0 / nW, 1.0 / nH);
     };
     window.addEventListener('resize', onResize);
 
@@ -600,7 +612,7 @@ function OasisApp() {
       domEl.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointerup', onPointerUp);
       domEl.removeEventListener('pointermove', onPointerMove);
-      domEl.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('pointercancel', onPointerCancel);
       audioEngine.dispose();
       controls.dispose();
       water.reflectTarget.dispose();
