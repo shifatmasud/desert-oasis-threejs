@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { WATER_LEVEL, SUN_DIRECTION, clamp, createRng, loadReal3DPlantGeometries } from './assets.js';
@@ -172,6 +173,7 @@ function OasisApp() {
   const [exposure, setExposure] = useState(1.06);
   const [cameraGoal, setCameraGoal] = useState(null);
   const [soundOn, setSoundOn] = useState(false);
+  const [orbitLocked, setOrbitLocked] = useState(true);
   const [goldenScrub, setGoldenScrub] = useState(0.5);
 
   useEffect(() => {
@@ -204,6 +206,7 @@ function OasisApp() {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0.65, -4.5);
     controls.enableDamping = true;
+    controls.enabled = false;
     controls.dampingFactor = 0.06;
     controls.maxPolarAngle = Math.PI * 0.49;
     controls.minDistance = 8;
@@ -472,45 +475,71 @@ function OasisApp() {
     const pointerNdc = new THREE.Vector2(0, 0);
     const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(WATER_LEVEL));
     const waterHit = new THREE.Vector3();
-    let rippleCursor = 0, lastRippleMs = 0, lastHitX = 999, lastHitZ = 999, lastPtrX = 0, lastPtrY = 0;
+    let rippleCursor = 0, wakeCursor = 0, lastWakeMs = 0, lastHitX = 999, lastHitZ = 999, lastPtrX = 0, lastPtrY = 0;
     let scrubWindBoost = 0, targetParallaxX = 0, targetParallaxY = 0, curParallaxX = 0, curParallaxY = 0;
-    let isDraggingOrbit = false, waterElapsed = 0;
+    let isDraggingOrbit = false, waterElapsed = 0, downX = 0, downY = 0;
 
-    function handleScrubPointer(clientX, clientY, isTouch) {
+    function intersectWater(clientX, clientY) {
       const rect = renderer.domElement.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
+      if (!rect.width || !rect.height) return null;
       const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
       const ny = -((clientY - rect.top) / rect.height) * 2 + 1;
-      const dx = nx - lastPtrX, dy = ny - lastPtrY;
-      const speed = Math.min(1.0, Math.hypot(dx, dy) * (isTouch ? 16.0 : 12.0));
-      lastPtrX = nx; lastPtrY = ny;
-      scrubWindBoost = Math.min(0.28, scrubWindBoost + speed * 0.14);
-      if (!isDraggingOrbit) { targetParallaxX = nx * 0.18; targetParallaxY = ny * 0.08; }
-      audioEngine.updateScrub(speed);
-
       pointerNdc.set(nx, ny);
       raycaster.setFromCamera(pointerNdc, camera);
       if (raycaster.ray.intersectPlane(waterPlane, waterHit)) {
         const rx = waterHit.x / 7.3, rz = (waterHit.z - 0.15) / 6.3;
-        if (rx * rx + rz * rz < 1.04) {
-          const nowMs = performance.now();
-          const moveDist = Math.hypot(waterHit.x - lastHitX, waterHit.z - lastHitZ);
-          if (nowMs - lastRippleMs > 85 && moveDist > 0.22) {
-            lastRippleMs = nowMs; lastHitX = waterHit.x; lastHitZ = waterHit.z;
-            const ripArr = water.material.uniforms.uRipples.value;
-            ripArr[rippleCursor].set(waterHit.x, waterHit.z, waterElapsed, Math.min(1.0, 0.45 + speed * 0.65));
-            rippleCursor = (rippleCursor + 1) % ripArr.length;
-            audioEngine.triggerWaterDrop(nx, speed);
-          }
+        if (rx * rx + rz * rz < 1.04) return { x: waterHit.x, z: waterHit.z, nx, ny };
+      }
+      return { x: null, z: null, nx, ny };
+    }
+
+    function triggerClickRipple(clientX, clientY) {
+      const hit = intersectWater(clientX, clientY);
+      if (!hit || hit.x === null) return;
+      const ripArr = water.material.uniforms.uRipples.value;
+      ripArr[rippleCursor].set(hit.x, hit.z, waterElapsed, 1.0);
+      rippleCursor = (rippleCursor + 1) % ripArr.length;
+      water.spawnSpray(hit.x, hit.z, 22, 1.05);
+      audioEngine.triggerWaterDrop(hit.nx, 0.9);
+    }
+
+    function handleWakeTrail(clientX, clientY, isTouch) {
+      const hit = intersectWater(clientX, clientY);
+      if (!hit) return;
+      const dx = hit.nx - lastPtrX, dy = hit.ny - lastPtrY;
+      const speed = Math.min(1.0, Math.hypot(dx, dy) * (isTouch ? 16.0 : 12.0));
+      lastPtrX = hit.nx; lastPtrY = hit.ny;
+      scrubWindBoost = Math.min(0.28, scrubWindBoost + speed * 0.14);
+      if (!isDraggingOrbit) { targetParallaxX = hit.nx * 0.18; targetParallaxY = hit.ny * 0.08; }
+      audioEngine.updateScrub(speed);
+
+      if (hit.x !== null) {
+        const nowMs = performance.now();
+        if (lastHitX > 500) { lastHitX = hit.x; lastHitZ = hit.z; return; }
+        const vx = hit.x - lastHitX, vz = hit.z - lastHitZ;
+        const moveDist = Math.hypot(vx, vz);
+        if (nowMs - lastWakeMs > 28 && moveDist > 0.07) {
+          lastWakeMs = nowMs; lastHitX = hit.x; lastHitZ = hit.z;
+          const wakeArr = water.material.uniforms.uWakes.value;
+          const dirArr = water.material.uniforms.uWakeDir.value;
+          wakeArr[wakeCursor].set(hit.x, hit.z, waterElapsed, Math.min(1.0, 0.45 + speed * 0.68));
+          dirArr[wakeCursor].set(vx / moveDist, vz / moveDist);
+          wakeCursor = (wakeCursor + 1) % wakeArr.length;
+          if (speed > 0.14) water.spawnSpray(hit.x, hit.z, 4, 0.55 + speed * 0.45, vx / moveDist, vz / moveDist);
         }
+      } else {
+        lastHitX = 999; lastHitZ = 999;
       }
     }
 
     const domEl = renderer.domElement;
-    const onPointerDown = (e) => { isDraggingOrbit = true; handleScrubPointer(e.clientX, e.clientY, e.pointerType === 'touch'); };
-    const onPointerUp = () => { isDraggingOrbit = false; };
-    const onPointerMove = (e) => { handleScrubPointer(e.clientX, e.clientY, e.pointerType === 'touch'); };
-    const onTouchMove = (e) => { if (e.touches && e.touches.length === 1) handleScrubPointer(e.touches[0].clientX, e.touches[0].clientY, true); };
+    const onPointerDown = (e) => { isDraggingOrbit = true; downX = e.clientX; downY = e.clientY; };
+    const onPointerUp = (e) => {
+      isDraggingOrbit = false;
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) < 9) triggerClickRipple(e.clientX, e.clientY);
+    };
+    const onPointerMove = (e) => { handleWakeTrail(e.clientX, e.clientY, e.pointerType === 'touch'); };
+    const onTouchMove = (e) => { if (e.touches && e.touches.length === 1) handleWakeTrail(e.touches[0].clientX, e.touches[0].clientY, true); };
     domEl.addEventListener('pointerdown', onPointerDown, { passive: true });
     window.addEventListener('pointerup', onPointerUp, { passive: true });
     domEl.addEventListener('pointermove', onPointerMove, { passive: true });
@@ -598,6 +627,7 @@ function OasisApp() {
     return () => cancelAnimationFrame(id);
   }, [cameraGoal]);
 
+  useEffect(() => { if (controlsRef.current) controlsRef.current.enabled = !orbitLocked; }, [orbitLocked]);
   useEffect(() => { if (windRef.current) windRef.current.uWindAmp.value = windAmp; }, [windAmp]);
   useEffect(() => { if (waterMatRef.current) waterMatRef.current.uniforms.uReflectStrength.value = reflectStrength; }, [reflectStrength]);
   useEffect(() => { if (rendererRef.current) rendererRef.current.toneMappingExposure = exposure; }, [exposure]);
@@ -616,21 +646,64 @@ function OasisApp() {
     setSoundOn(next);
   };
 
+  const lockSvg = React.createElement(
+    'svg',
+    { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('rect', { x: 4, y: 11, width: 16, height: 10, rx: 2 }),
+    orbitLocked
+      ? React.createElement('path', { d: 'M8 11V7a4 4 0 0 1 8 0v4' })
+      : React.createElement('path', { d: 'M8 11V7a4 4 0 0 1 7.6-1.7' })
+  );
+
   return React.createElement(
     'div', { style: { width: '100%', height: '100%', position: 'relative' } },
     React.createElement('div', { ref: mountRef, style: { width: '100%', height: '100%' } }),
     React.createElement(
-      'button',
-      { className: 'hud-pill', type: 'button', onClick: () => setPanelOpen((v) => !v) },
+      motion.button,
+      {
+        className: 'hud-pill', type: 'button',
+        whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 },
+        transition: { type: 'spring', stiffness: 420, damping: 28 },
+        onClick: () => setPanelOpen((v) => !v),
+      },
       React.createElement('span', { style: { width: 7, height: 7, borderRadius: '50%', background: '#f1c682', display: 'inline-block' } }),
       panelOpen ? 'Close Studio' : 'Oasis Studio'
     ),
     React.createElement(
-      'div', { className: 'scrub-dock' },
+      motion.div,
+      {
+        className: 'scrub-dock',
+        initial: { opacity: 0, y: 16 },
+        animate: { opacity: 1, y: 0 },
+        transition: { type: 'spring', stiffness: 320, damping: 28 },
+      },
       React.createElement(
-        'button',
-        { className: `sound-btn ${soundOn ? 'on' : ''}`, onClick: toggleSound, type: 'button', 'aria-label': 'Toggle Oasis Sound' },
-        React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: soundOn ? '#9cf2d2' : '#f1c682', display: 'inline-block' } }),
+        motion.button,
+        {
+          className: `sound-btn ${orbitLocked ? '' : 'on'}`,
+          onClick: () => setOrbitLocked((v) => !v),
+          type: 'button',
+          title: orbitLocked ? 'Orbit Locked — click to unlock camera' : 'Orbit Unlocked — click to lock camera',
+          'aria-label': orbitLocked ? 'Unlock Orbit Camera' : 'Lock Orbit Camera',
+          whileHover: { scale: 1.05 }, whileTap: { scale: 0.93 },
+          transition: { type: 'spring', stiffness: 460, damping: 26 },
+        },
+        lockSvg,
+        orbitLocked ? 'Locked' : 'Orbit'
+      ),
+      React.createElement(
+        motion.button,
+        {
+          className: `sound-btn ${soundOn ? 'on' : ''}`,
+          onClick: toggleSound, type: 'button', 'aria-label': 'Toggle Oasis Sound',
+          whileHover: { scale: 1.05 }, whileTap: { scale: 0.93 },
+          transition: { type: 'spring', stiffness: 460, damping: 26 },
+        },
+        React.createElement(motion.span, {
+          animate: { scale: soundOn ? [1, 1.35, 1] : 1 },
+          transition: { duration: 1.6, repeat: soundOn ? Infinity : 0 },
+          style: { width: 6, height: 6, borderRadius: '50%', background: soundOn ? '#9cf2d2' : '#f1c682', display: 'inline-block' },
+        }),
         soundOn ? 'Sound On' : 'Sound'
       ),
       React.createElement(
@@ -642,38 +715,54 @@ function OasisApp() {
           onInput: (e) => setGoldenScrub(parseFloat(e.target.value)),
         })
       ),
-      React.createElement('span', { className: 'scrub-hint' }, 'Hover / Touch Water')
+      React.createElement('span', { className: 'scrub-hint' }, orbitLocked ? 'Tap Ripple · Drag Wake' : 'Orbit Free · Tap Water')
     ),
-    panelOpen && React.createElement(
-      'div',
-      { className: 'hud-panel' },
-      React.createElement('div', { className: 'hud-title' }, 'Camera Presets'),
-      React.createElement(
-        'div', { className: 'preset-grid' },
-        Object.entries(CAMERA_PRESETS).map(([key, preset]) =>
-          React.createElement(
-            'button',
-            { key, type: 'button', className: `preset-btn ${activePreset === key ? 'active' : ''}`, onClick: () => { setActivePreset(key); setCameraGoal(preset); } },
-            preset.label
+    React.createElement(
+      AnimatePresence, null,
+      panelOpen && React.createElement(
+        motion.div,
+        {
+          key: 'studio-panel',
+          className: 'hud-panel',
+          initial: { opacity: 0, y: -12, scale: 0.96 },
+          animate: { opacity: 1, y: 0, scale: 1 },
+          exit: { opacity: 0, y: -10, scale: 0.96 },
+          transition: { type: 'spring', stiffness: 360, damping: 28 },
+        },
+        React.createElement('div', { className: 'hud-title' }, 'Camera Presets'),
+        React.createElement(
+          'div', { className: 'preset-grid' },
+          Object.entries(CAMERA_PRESETS).map(([key, preset]) =>
+            React.createElement(
+              motion.button,
+              {
+                key, type: 'button',
+                className: `preset-btn ${activePreset === key ? 'active' : ''}`,
+                whileHover: { scale: 1.03 }, whileTap: { scale: 0.95 },
+                transition: { type: 'spring', stiffness: 440, damping: 26 },
+                onClick: () => { setActivePreset(key); setCameraGoal(preset); },
+              },
+              preset.label
+            )
           )
-        )
-      ),
-      React.createElement(
-        'div', { className: 'slider-row' },
-        React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Canopy Wind Sway'), React.createElement('span', null, windAmp.toFixed(2))),
-        React.createElement('input', { type: 'range', min: 0, max: 0.45, step: 0.01, value: windAmp, onChange: (e) => setWindAmp(parseFloat(e.target.value)) })
-      ),
-      React.createElement(
-        'div', { className: 'slider-row' },
-        React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Water Reflection'), React.createElement('span', null, Math.round(reflectStrength * 100) + '%')),
-        React.createElement('input', { type: 'range', min: 0.2, max: 1.3, step: 0.05, value: reflectStrength, onChange: (e) => setReflectStrength(parseFloat(e.target.value)) })
-      ),
-      React.createElement(
-        'div', { className: 'slider-row' },
-        React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Filmic Exposure'), React.createElement('span', null, exposure.toFixed(2))),
-        React.createElement('input', { type: 'range', min: 0.8, max: 1.4, step: 0.02, value: exposure, onChange: (e) => setExposure(parseFloat(e.target.value)) })
-      ),
-      React.createElement('div', { className: 'badge-row' }, React.createElement('span', null, 'Three.js 0.187.0 WebGL2'), React.createElement('span', null, 'Real-Data Oasis'))
+        ),
+        React.createElement(
+          'div', { className: 'slider-row' },
+          React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Canopy Wind Sway'), React.createElement('span', null, windAmp.toFixed(2))),
+          React.createElement('input', { type: 'range', min: 0, max: 0.45, step: 0.01, value: windAmp, onChange: (e) => setWindAmp(parseFloat(e.target.value)) })
+        ),
+        React.createElement(
+          'div', { className: 'slider-row' },
+          React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Water Reflection'), React.createElement('span', null, Math.round(reflectStrength * 100) + '%')),
+          React.createElement('input', { type: 'range', min: 0.2, max: 1.3, step: 0.05, value: reflectStrength, onChange: (e) => setReflectStrength(parseFloat(e.target.value)) })
+        ),
+        React.createElement(
+          'div', { className: 'slider-row' },
+          React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Filmic Exposure'), React.createElement('span', null, exposure.toFixed(2))),
+          React.createElement('input', { type: 'range', min: 0.8, max: 1.4, step: 0.02, value: exposure, onChange: (e) => setExposure(parseFloat(e.target.value)) })
+        ),
+        React.createElement('div', { className: 'badge-row' }, React.createElement('span', null, 'Three.js 0.187.0 WebGL2'), React.createElement('span', null, 'Real-Data Oasis'))
+      )
     )
   );
 }
