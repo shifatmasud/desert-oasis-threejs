@@ -134,18 +134,14 @@ function createOasisFoliage(realGeos) {
   }
 
   const realFernMat = new THREE.MeshStandardMaterial({
-    map: loadRealScanTex(REAL_3D_PLANT_URLS.fern_02.diffUri, true, 1, 1),
-    normalMap: REAL_SCANS.fernNor,
-    normalScale: new THREE.Vector2(0.85, 0.85),
+    color: 0x789b55,
     roughness: 0.56,
     side: THREE.DoubleSide,
     emissive: new THREE.Color('#12220a'),
     emissiveIntensity: 0.09,
   });
   const realCalaMat = new THREE.MeshStandardMaterial({
-    map: loadRealScanTex(REAL_3D_PLANT_URLS.calathea_orbifolia_01.diffUri, true, 1, 1),
-    normalMap: REAL_SCANS.leafNor,
-    normalScale: new THREE.Vector2(1.05, 1.05),
+    color: 0x71934f,
     roughness: 0.46,
     metalness: 0.0,
     side: THREE.DoubleSide,
@@ -153,7 +149,7 @@ function createOasisFoliage(realGeos) {
     emissiveIntensity: 0.09,
   });
   const realFlowMat = new THREE.MeshStandardMaterial({
-    map: loadRealScanTex(REAL_3D_PLANT_URLS.flower_gazania.diffUri, true, 1, 1),
+    color: 0xd9a34c,
     roughness: 0.52,
     side: THREE.DoubleSide,
     emissive: new THREE.Color('#1a2e0c'),
@@ -366,7 +362,7 @@ function createOasisFoliage(realGeos) {
     geo.setIndex(indices);
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true, normalMap: REAL_SCANS.fernNor, normalScale: new THREE.Vector2(0.7, 0.7),
+      vertexColors: true,
       side: THREE.DoubleSide, roughness: 0.46, emissive: new THREE.Color('#243a10'), emissiveIntensity: 0.28,
     });
     attachBotanicalSSS(mat, SUN_DIRECTION, '#e0dc62', 1.05, 'bot-sss-hero-fern-v34');
@@ -435,7 +431,7 @@ function createOasisFoliage(realGeos) {
     geo.setIndex(indices);
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true, normalMap: REAL_SCANS.leafNor, normalScale: new THREE.Vector2(0.5, 0.5),
+      vertexColors: true,
       side: THREE.DoubleSide, roughness: 0.30, metalness: 0.05,
       emissive: new THREE.Color('#182a0e'), emissiveIntensity: 0.24,
     });
