@@ -25,8 +25,6 @@ export const REAL_SCAN_URIS = {
   duneRippleNor: 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_sand/aerial_sand_nor_gl_1k.jpg',
   barkDiff:      'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_02/bark_brown_02_diff_1k.jpg',
   barkNor:       'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_02/bark_brown_02_nor_gl_1k.jpg',
-  fernNor:       'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/fern_02/fern_02_nor_gl_1k.jpg',
-  leafNor:       'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/calathea_orbifolia_01/calathea_orbifolia_01_nor_gl_1k.jpg',
 };
 
 function decodeB64Bytes(b64) {
@@ -86,8 +84,6 @@ export const REAL_SCANS = {
   duneRippleNor: loadRealScanTex(REAL_SCAN_URIS.duneRippleNor, false, 1, 1),
   barkDiff:      loadRealScanTex(REAL_SCAN_URIS.barkDiff, true, 1, 5),
   barkNor:       loadRealScanTex(REAL_SCAN_URIS.barkNor, false, 1, 5),
-  fernNor:       loadRealScanTex(REAL_SCAN_URIS.fernNor, false, 1, 1),
-  leafNor:       loadRealScanTex(REAL_SCAN_URIS.leafNor, false, 1, 1),
 };
 
 export const REAL_3D_PLANT_URLS = {
@@ -125,7 +121,11 @@ function fallbackPlantGeo(kind) {
 }
 
 export async function loadReal3DPlantGeometries() {
-  const loader = new GLTFLoader();
+  const manager = new THREE.LoadingManager();
+  const neutralLeafSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="#78965a"/></svg>';
+  const neutralLeafTexture = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(neutralLeafSvg);
+  manager.setURLModifier((url) => /\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(url) ? neutralLeafTexture : url);
+  const loader = new GLTFLoader(manager);
   loader.setCrossOrigin('anonymous');
   async function fetchOne(url, kind) {
     try {

@@ -14,7 +14,6 @@ function createPalmGrove(sunDir) {
   // 100% 3D-Modeled Palm Frond Material (ZERO alpha cut — pure opaque 3D leaflets + early-Z!)
   const frondMaterial = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    normalMap: REAL_SCANS.fernNor,
     normalScale: new THREE.Vector2(0.45, 0.45),
     side: THREE.DoubleSide,
     roughness: 0.56,
