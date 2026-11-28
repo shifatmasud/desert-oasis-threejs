@@ -7,7 +7,7 @@ function createPalmGrove(sunDir) {
     uTime: { value: 0 },
     uSunDir: { value: sunDir.clone() },
     uSssColor: { value: new THREE.Color('#e8bc42') },
-    uSssStrength: { value: 1.72 },
+    uSssStrength: { value: 1.02 },
     uWindAmp: { value: 0.16 },
   };
 
@@ -16,7 +16,7 @@ function createPalmGrove(sunDir) {
     vertexColors: true,
     normalScale: new THREE.Vector2(0.45, 0.45),
     side: THREE.DoubleSide,
-    roughness: 0.56,
+    roughness: 0.68,
     metalness: 0.02,
   });
   frondMaterial.customProgramCacheKey = () => 'oasis-instanced-frond-sss-v8';
@@ -70,7 +70,7 @@ function createPalmGrove(sunDir) {
           float sss = (backScatter * 0.90 + rimFactor * sunWrap * 0.90 + 0.08) * (tipMask * 0.72 + edgeMask * 0.45) * uSssStrength;
           float crownAO = smoothstep(0.04, 0.36, vLeafUv.y);
           diffuseColor.rgb *= mix(0.52, 1.0, crownAO);
-          totalEmissiveRadiance += uSssColor * diffuseColor.rgb * sss * 2.15 * crownAO + uSssColor * sss * 0.08 * crownAO;
+          totalEmissiveRadiance += uSssColor * diffuseColor.rgb * sss * 1.25 * crownAO + uSssColor * sss * 0.04 * crownAO;
         }
       `);
   };

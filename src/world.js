@@ -101,7 +101,7 @@ function createSkyDome(sunDir) {
 }
 
 function createDesertTerrain(sunDir) {
-  const geometry = new THREE.PlaneGeometry(230, 185, 180, 145);
+  const geometry = new THREE.PlaneGeometry(230, 185, 128, 104);
   geometry.rotateX(-Math.PI * 0.5);
   geometry.translate(0.0, 0.0, -52.0);
 
@@ -335,7 +335,7 @@ function createDesertTerrain(sunDir) {
 }
 
 function createOasisWater(sunDir) {
-  const geometry = new THREE.PlaneGeometry(26, 22, 96, 96);
+  const geometry = new THREE.PlaneGeometry(26, 22, 72, 72);
   geometry.rotateX(-Math.PI * 0.5);
   geometry.translate(0.0, WATER_LEVEL, 2.0);
 
@@ -346,7 +346,7 @@ function createOasisWater(sunDir) {
   }
   geometry.setAttribute('aDepth', new THREE.BufferAttribute(depths, 1));
 
-  const reflectTarget = new THREE.WebGLRenderTarget(672, 384, {
+  const reflectTarget = new THREE.WebGLRenderTarget(384, 216, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     type: THREE.HalfFloatType,
@@ -498,8 +498,7 @@ function createOasisWater(sunDir) {
       vec3 Nx = getWaterNormal(vWorldPos.xz + vec2(cEps, 0.0), uTime);
       vec3 Nz = getWaterNormal(vWorldPos.xz + vec2(0.0, cEps), uTime);
       float convR = -((Nx.x - N.x) + (Nz.z - N.z)) / cEps;
-      vec3 Nshift = getWaterNormal(vWorldPos.xz + vec2(0.04, 0.03), uTime);
-      float convB = -((Nx.x - Nshift.x) + (Nz.z - Nshift.z)) / cEps;
+      float convB = -((Nx.x - N.x) * 0.92 + (Nz.z - N.z) * 1.08 + (Nx.z - Nz.x) * 0.25) / cEps;
       float focusR = pow(clamp(convR * 0.38 + 0.48, 0.0, 1.35), 2.4);
       float focusG = pow(clamp((convR * 0.5 + convB * 0.5) * 0.38 + 0.48, 0.0, 1.35), 2.4);
       float focusB = pow(clamp(convB * 0.38 + 0.48, 0.0, 1.35), 2.4);
@@ -685,10 +684,12 @@ function createOasisWater(sunDir) {
 
   const lookDir = new THREE.Vector3();
   const targetPt = new THREE.Vector3();
+  let reflFrame = 0;
 
   mesh.update = (renderer, scene, camera, dt) => {
     material.uniforms.uTime.value += dt;
     updateSpray(dt);
+    if ((reflFrame++ & 1) !== 0) return;
     reflectCam.copy(camera);
     reflectCam.position.y = 2.0 * WATER_LEVEL - camera.position.y;
     camera.getWorldDirection(lookDir);

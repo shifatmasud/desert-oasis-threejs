@@ -100,16 +100,18 @@ function createOasisFoliage(realGeos) {
   const rng = createRng(88421);
   const { fernGeo, calaGeo, flowGeo } = realGeos;
 
-  function attachBotanicalSSS(mat, sunDirVec, sssHex, strength, key) {
-    mat.customProgramCacheKey = () => key + '-inst-v36';
+  // Shared botanical SSS shader program (single cache key -> fewer shader compiles on Adreno 5xx)
+  function attachBotanicalSSS(mat, sunDirVec, sssHex, strength, _key) {
+    mat.customProgramCacheKey = () => 'oasis-bot-sss-shared-v51';
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uSunDir = { value: sunDirVec.clone() };
       shader.uniforms.uSssCol = { value: new THREE.Color(sssHex) };
       shader.uniforms.uSssAmt = { value: strength };
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vBotWorldPos;\nvarying vec3 vBotWorldNorm;')
+        .replace('#include <common>', '#include <common>\nvarying vec3 vBotWorldPos;\nvarying vec3 vBotWorldNorm;\nvarying float vBotLocalY;')
         .replace('#include <worldpos_vertex>', /* glsl */ `
           #include <worldpos_vertex>
+          vBotLocalY = clamp(position.y, 0.0, 1.6);
           #ifdef USE_INSTANCING
             vBotWorldPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
             vBotWorldNorm = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
@@ -119,41 +121,42 @@ function createOasisFoliage(realGeos) {
           #endif
         `);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 uSunDir;\nuniform vec3 uSssCol;\nuniform float uSssAmt;\nvarying vec3 vBotWorldPos;\nvarying vec3 vBotWorldNorm;')
+        .replace('#include <common>', '#include <common>\nuniform vec3 uSunDir;\nuniform vec3 uSssCol;\nuniform float uSssAmt;\nvarying vec3 vBotWorldPos;\nvarying vec3 vBotWorldNorm;\nvarying float vBotLocalY;')
         .replace('#include <emissivemap_fragment>', /* glsl */ `
           #include <emissivemap_fragment>
           vec3 bV = normalize(cameraPosition - vBotWorldPos);
           vec3 bN = normalize(vBotWorldNorm) * (gl_FrontFacing ? 1.0 : -1.0);
-          float backL = pow(clamp(dot(bV, -uSunDir), 0.0, 1.0), 2.2);
+          float hAO = mix(0.46, 1.0, smoothstep(0.02, 0.62, vBotLocalY));
+          diffuseColor.rgb *= hAO;
           float wrapL = clamp(dot(bN, uSunDir) * 0.5 + 0.5, 0.0, 1.0);
-          float rimL  = pow(1.0 - abs(dot(bN, bV)), 2.0) * smoothstep(0.0, 0.85, wrapL);
-          vec3 shadowLift = max(diffuseColor.rgb, vec3(0.04, 0.08, 0.02)) * vec3(0.035, 0.055, 0.020);
-          totalEmissiveRadiance += shadowLift + uSssCol * max(diffuseColor.rgb, vec3(0.12, 0.18, 0.07)) * (backL * 1.15 + rimL * 1.18 + wrapL * 0.14) * uSssAmt;
+          float backL = pow(clamp(dot(bV, -uSunDir), 0.0, 1.0), 3.0) * (0.28 + 0.72 * wrapL);
+          float rimL  = pow(1.0 - abs(dot(bN, bV)), 2.8) * smoothstep(0.28, 0.90, wrapL);
+          totalEmissiveRadiance += uSssCol * diffuseColor.rgb * (backL * 0.75 + rimL * 0.28 + wrapL * 0.06) * uSssAmt * hAO;
         `);
     };
   }
 
   const realFernMat = new THREE.MeshStandardMaterial({
-    color: 0x789b55,
-    roughness: 0.56,
+    color: 0x5d7d3e,
+    roughness: 0.74,
     side: THREE.DoubleSide,
-    emissive: new THREE.Color('#12220a'),
-    emissiveIntensity: 0.09,
+    emissive: new THREE.Color('#0c1706'),
+    emissiveIntensity: 0.04,
   });
   const realCalaMat = new THREE.MeshStandardMaterial({
-    color: 0x71934f,
-    roughness: 0.46,
+    color: 0x527239,
+    roughness: 0.68,
     metalness: 0.0,
     side: THREE.DoubleSide,
-    emissive: new THREE.Color('#12220c'),
-    emissiveIntensity: 0.09,
+    emissive: new THREE.Color('#0a1506'),
+    emissiveIntensity: 0.04,
   });
   const realFlowMat = new THREE.MeshStandardMaterial({
-    color: 0xd9a34c,
-    roughness: 0.52,
+    color: 0x8e8344,
+    roughness: 0.72,
     side: THREE.DoubleSide,
-    emissive: new THREE.Color('#1a2e0c'),
-    emissiveIntensity: 0.22,
+    emissive: new THREE.Color('#141808'),
+    emissiveIntensity: 0.05,
   });
 
   const flowerTex = createPaintedFlowerSprigTexture();
@@ -164,7 +167,7 @@ function createOasisFoliage(realGeos) {
   });
   const violetMat = new THREE.MeshStandardMaterial({
     map: violetTex, alphaTest: 0.28, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.56,
-    emissive: new THREE.Color('#421e78'), emissiveIntensity: 0.48,
+    emissive: new THREE.Color('#2a124d'), emissiveIntensity: 0.14,
   });
 
   function createCrossCardGeo(w, h) {
@@ -298,9 +301,9 @@ function createOasisFoliage(realGeos) {
     return mesh;
   }
 
-  attachBotanicalSSS(realFernMat, SUN_DIRECTION, '#d8d45c', 0.85, 'bot-sss-fern-v34');
-  attachBotanicalSSS(realCalaMat, SUN_DIRECTION, '#c2c84e', 0.58, 'bot-sss-cala-v34');
-  attachBotanicalSSS(realFlowMat, SUN_DIRECTION, '#d8c852', 0.55, 'bot-sss-flow-v37');
+  attachBotanicalSSS(realFernMat, SUN_DIRECTION, '#c8be54', 0.36, 'bot-sss-fern');
+  attachBotanicalSSS(realCalaMat, SUN_DIRECTION, '#b2b84a', 0.30, 'bot-sss-cala');
+  attachBotanicalSSS(realFlowMat, SUN_DIRECTION, '#c8b252', 0.28, 'bot-sss-flow');
   group.add(buildInstanced(fernGeo, realFernMat, fernM, fernC));
   group.add(buildInstanced(calaGeo, realCalaMat, calaM, calaC));
   group.add(buildInstanced(flowGeo, realFlowMat, flowM, flowC));
@@ -363,9 +366,9 @@ function createOasisFoliage(realGeos) {
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      side: THREE.DoubleSide, roughness: 0.46, emissive: new THREE.Color('#243a10'), emissiveIntensity: 0.28,
+      side: THREE.DoubleSide, roughness: 0.70, emissive: new THREE.Color('#101d07'), emissiveIntensity: 0.06,
     });
-    attachBotanicalSSS(mat, SUN_DIRECTION, '#e0dc62', 1.05, 'bot-sss-hero-fern-v34');
+    attachBotanicalSSS(mat, SUN_DIRECTION, '#c8c452', 0.40, 'bot-sss-hero-fern');
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(cx, getTerrainHeight(cx, cz) + 0.04, cz);
     mesh.receiveShadow = true;
@@ -432,10 +435,10 @@ function createOasisFoliage(realGeos) {
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      side: THREE.DoubleSide, roughness: 0.30, metalness: 0.05,
-      emissive: new THREE.Color('#182a0e'), emissiveIntensity: 0.24,
+      side: THREE.DoubleSide, roughness: 0.58, metalness: 0.02,
+      emissive: new THREE.Color('#0c1706'), emissiveIntensity: 0.05,
     });
-    attachBotanicalSSS(mat, SUN_DIRECTION, '#b8cc52', 0.70, 'bot-sss-hero-agave-v34');
+    attachBotanicalSSS(mat, SUN_DIRECTION, '#a6ba4c', 0.32, 'bot-sss-hero-agave');
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(cx, getTerrainHeight(cx, cz) - 0.02, cz);
     mesh.receiveShadow = true;

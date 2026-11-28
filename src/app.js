@@ -184,8 +184,8 @@ function OasisApp() {
     const width = container.clientWidth || window.innerWidth || 1344;
     const height = container.clientHeight || window.innerHeight || 768;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-    const getDpr = () => Math.min(window.devicePixelRatio || 1, 2.0);
+    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+    const getDpr = () => Math.min(window.devicePixelRatio || 1, 1.2);
     let curDpr = getDpr();
     renderer.setPixelRatio(curDpr);
     renderer.setSize(width, height);
@@ -194,6 +194,8 @@ function OasisApp() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -221,7 +223,7 @@ function OasisApp() {
     const sunLight = new THREE.DirectionalLight('#ffc97a', 4.25);
     sunLight.position.copy(SUN_DIRECTION).multiplyScalar(68);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(1024, 1024);
+    sunLight.shadow.mapSize.set(512, 512);
     sunLight.shadow.radius = 6.0;
     sunLight.shadow.bias = -0.0005;
     sunLight.shadow.normalBias = 0.04;
@@ -243,6 +245,7 @@ function OasisApp() {
       if (disposed) return;
       const foliage = createOasisFoliage(realGeos);
       scene.add(foliage.group);
+      renderer.shadowMap.needsUpdate = true;
     });
 
     const water = createOasisWater(SUN_DIRECTION);
@@ -361,27 +364,25 @@ function OasisApp() {
           vec3 baseCol = texture(tDiffuse, vUv).rgb;
           float centerDepth = getLinearDepth(vUv);
 
+          float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
           if (centerDepth < 90.0) {
             float occ = 0.0;
-            float aoRad = clamp(0.016 * (14.0 / max(centerDepth, 3.0)), 0.004, 0.022);
-            vec2 aoDirs[8] = vec2[8](
-              vec2( 1.0,  0.0), vec2(-1.0,  0.0), vec2( 0.0,  1.0), vec2( 0.0, -1.0),
-              vec2( 0.707, 0.707), vec2(-0.707, 0.707), vec2( 0.707,-0.707), vec2(-0.707,-0.707)
-            );
-            for (int k = 0; k < 8; k++) {
-              float rMul = (k < 4) ? 0.65 : 1.0;
-              float sDepth = getLinearDepth(vUv + aoDirs[k] * aoRad * rMul);
+            float aoRad = clamp(0.015 * (14.0 / max(centerDepth, 3.0)), 0.004, 0.020);
+            float ang0 = ign * 1.570796;
+            float ca = cos(ang0), sa = sin(ang0);
+            mat2 rot = mat2(ca, -sa, sa, ca);
+            vec2 aoDirs[4] = vec2[4](vec2(1.0, 0.0), vec2(-1.0, 0.0), vec2(0.0, 1.0), vec2(0.0, -1.0));
+            for (int k = 0; k < 4; k++) {
+              float sDepth = getLinearDepth(vUv + (rot * aoDirs[k]) * aoRad);
               float diff = centerDepth - sDepth;
-              float rangeCheck = smoothstep(2.2, 0.2, abs(diff));
-              occ += smoothstep(0.04, 0.45, diff) * rangeCheck;
+              occ += smoothstep(0.04, 0.45, diff) * smoothstep(2.2, 0.2, abs(diff));
             }
-            float ssao = 1.0 - clamp((occ / 8.0) * 0.86, 0.0, 0.68);
+            float ssao = 1.0 - clamp((occ * 0.25) * 0.84, 0.0, 0.65);
             baseCol *= mix(vec3(0.58, 0.46, 0.62), vec3(1.0), ssao);
           }
 
           if (centerDepth < 145.0) {
             float farFade = smoothstep(145.0, 95.0, centerDepth);
-            float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
             vec2 toSunUv = uSunScreenPos - vUv;
             vec2 sunRayDir = toSunUv / max(length(toSunUv), 0.001);
             float microMaxR = clamp(0.018 * (12.0 / max(centerDepth, 3.0)), 0.005, 0.024);
@@ -390,8 +391,8 @@ function OasisApp() {
             float maxThick  = 0.36  + centerDepth * 0.045;
 
             float microShadow = 0.0;
-            for (int s = 0; s < 8; s++) {
-              float t = (float(s) + 0.35 + ign * 0.65) / 8.0;
+            for (int s = 0; s < 4; s++) {
+              float t = (float(s) + 0.35 + ign * 0.65) / 4.0;
               vec2 rayUv = vUv + sunRayDir * (t * microMaxR);
               if (rayUv.x < 0.002 || rayUv.x > 0.998 || rayUv.y < 0.002 || rayUv.y > 0.998) break;
               float rayDepth = getLinearDepth(rayUv);
@@ -400,8 +401,8 @@ function OasisApp() {
               microShadow = max(microShadow, hit * (1.0 - t * 0.32));
             }
             float macroShadow = 0.0;
-            for (int s = 0; s < 8; s++) {
-              float t = (float(s) + 0.40 + ign * 0.60) / 8.0;
+            for (int s = 0; s < 4; s++) {
+              float t = (float(s) + 0.40 + ign * 0.60) / 4.0;
               vec2 rayUv = vUv + sunRayDir * (microMaxR + t * (macroMaxR - microMaxR));
               if (rayUv.x < 0.002 || rayUv.x > 0.998 || rayUv.y < 0.002 || rayUv.y > 0.998) break;
               float rayDepth = getLinearDepth(rayUv);
@@ -414,11 +415,11 @@ function OasisApp() {
           }
 
           vec2 sunPos = uSunScreenPos;
-          vec2 deltaUv = (vUv - sunPos) * (0.92 / 32.0);
-          vec2 sampleUv = vUv;
+          vec2 deltaUv = (vUv - sunPos) * (0.92 / 16.0);
+          vec2 sampleUv = vUv - deltaUv * (ign * 0.85);
           float illumDecay = 1.0;
           vec3 godrays = vec3(0.0);
-          for (int i = 0; i < 32; i++) {
+          for (int i = 0; i < 16; i++) {
             sampleUv -= deltaUv;
             vec2 clampedUv = clamp(sampleUv, vec2(0.002), vec2(0.998));
             vec3 s = texture(tDiffuse, clampedUv).rgb;
@@ -427,9 +428,9 @@ function OasisApp() {
             float isSky = smoothstep(135.0, 210.0, sDepth);
             float skyPass = isSky * smoothstep(0.28, 0.65, luma) * smoothstep(0.32, 0.62, clampedUv.y);
             godrays += s * skyPass * illumDecay;
-            illumDecay *= 0.945;
+            illumDecay *= 0.895;
           }
-          godrays *= (1.0 / 32.0);
+          godrays *= (1.0 / 16.0);
           vec2 toSun = vUv - sunPos;
           float sunDist = length(toSun);
           float radialFalloff = smoothstep(1.25, 0.0, sunDist);
@@ -438,18 +439,15 @@ function OasisApp() {
           vec3 col = baseCol + godrays * vec3(1.00, 0.78, 0.46) * uGodrayWeight * radialFalloff * beamDetail;
           col += vec3(1.00, 0.80, 0.50) * exp(-sunDist * 4.6) * 0.08;
 
-          vec2 off = uTexelSize * 4.5;
+          vec2 off = uTexelSize * 4.2;
           vec3 bloom = vec3(0.0);
-          vec2 taps[8] = vec2[8](
-            vec2( 1.0,  0.0), vec2(-1.0,  0.0), vec2( 0.0,  1.0), vec2( 0.0, -1.0),
-            vec2( 0.7,  0.7), vec2(-0.7,  0.7), vec2( 0.7, -0.7), vec2(-0.7, -0.7)
-          );
-          for (int j = 0; j < 8; j++) {
+          vec2 taps[4] = vec2[4](vec2(0.85, 0.85), vec2(-0.85, 0.85), vec2(0.85, -0.85), vec2(-0.85, -0.85));
+          for (int j = 0; j < 4; j++) {
             vec3 bs = texture(tDiffuse, clamp(vUv + taps[j] * off, vec2(0.002), vec2(0.998))).rgb;
             float bl = dot(bs, vec3(0.299, 0.587, 0.114));
             bloom += bs * smoothstep(0.66, 1.15, bl);
           }
-          col += (bloom / 8.0) * vec3(1.0, 0.86, 0.68) * uBloomWeight;
+          col += (bloom * 0.25) * vec3(1.0, 0.86, 0.68) * uBloomWeight;
 
           col *= 1.0 - dot(vUv - 0.5, vUv - 0.5) * 0.24;
           col *= 1.04;
@@ -649,6 +647,7 @@ function OasisApp() {
       const d = goldenScrub - 0.5;
       sunLightRef.current.color.setRGB(1.0, Math.max(0.68, Math.min(0.92, 0.84 - d * 0.16)), Math.max(0.46, Math.min(0.82, 0.64 + d * 0.22)));
       sunLightRef.current.position.set(-28 + d * 18, 18 - Math.abs(d) * 4, -22);
+      if (rendererRef.current) rendererRef.current.shadowMap.needsUpdate = true;
     }
   }, [goldenScrub]);
 
