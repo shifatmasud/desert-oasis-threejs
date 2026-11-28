@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { motion, AnimatePresence } from 'framer-motion';
 import { WATER_LEVEL, SUN_DIRECTION, clamp, createRng, loadReal3DPlantGeometries } from './assets.js';
 import { createSkyDome, createDesertTerrain, createOasisWater } from './world.js';
 import { createPalmGrove } from './palms.js';
@@ -180,8 +179,8 @@ function OasisApp() {
     const container = mountRef.current;
     if (!container) return;
 
-    const width = container.clientWidth || 1344;
-    const height = container.clientHeight || 768;
+    const width = container.clientWidth || window.innerWidth || 1344;
+    const height = container.clientHeight || window.innerHeight || 768;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
@@ -356,7 +355,6 @@ function OasisApp() {
           vec3 baseCol = texture(tDiffuse, vUv).rgb;
           float centerDepth = getLinearDepth(vUv);
 
-          // A. 8-Tap Depth-Based SSAO
           if (centerDepth < 90.0) {
             float occ = 0.0;
             float aoRad = clamp(0.016 * (14.0 / max(centerDepth, 3.0)), 0.004, 0.022);
@@ -375,7 +373,6 @@ function OasisApp() {
             baseCol *= mix(vec3(0.58, 0.46, 0.62), vec3(1.0), ssao);
           }
 
-          // B. Full-Scene 16-Step Dual-Scale IGN Screen-Space Detailed Shadows
           if (centerDepth < 145.0) {
             float farFade = smoothstep(145.0, 95.0, centerDepth);
             float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
@@ -410,7 +407,6 @@ function OasisApp() {
             baseCol *= mix(vec3(1.0), vec3(0.46, 0.36, 0.48), totalSSShadow * 0.72);
           }
 
-          // 1. Depth-Gated 32-Tap Volumetric Godrays
           vec2 sunPos = uSunScreenPos;
           vec2 deltaUv = (vUv - sunPos) * (0.92 / 32.0);
           vec2 sampleUv = vUv;
@@ -436,7 +432,6 @@ function OasisApp() {
           vec3 col = baseCol + godrays * vec3(1.00, 0.78, 0.46) * uGodrayWeight * radialFalloff * beamDetail;
           col += vec3(1.00, 0.80, 0.50) * exp(-sunDist * 4.6) * 0.08;
 
-          // 2. Soft Golden-Hour Bloom
           vec2 off = uTexelSize * 4.5;
           vec3 bloom = vec3(0.0);
           vec2 taps[8] = vec2[8](
@@ -450,7 +445,6 @@ function OasisApp() {
           }
           col += (bloom / 8.0) * vec3(1.0, 0.86, 0.68) * uBloomWeight;
 
-          // 3. Cohesive Minimal Anime Color Grading
           col *= 1.0 - dot(vUv - 0.5, vUv - 0.5) * 0.24;
           col *= 1.04;
           col = (col * (2.45 * col + 0.035)) / (col * (2.38 * col + 0.58) + 0.14);
@@ -626,8 +620,8 @@ function OasisApp() {
     'div', { style: { width: '100%', height: '100%', position: 'relative' } },
     React.createElement('div', { ref: mountRef, style: { width: '100%', height: '100%' } }),
     React.createElement(
-      motion.button,
-      { className: 'hud-pill', whileHover: { scale: 1.03 }, whileTap: { scale: 0.96 }, onClick: () => setPanelOpen((v) => !v) },
+      'button',
+      { className: 'hud-pill', type: 'button', onClick: () => setPanelOpen((v) => !v) },
       React.createElement('span', { style: { width: 7, height: 7, borderRadius: '50%', background: '#f1c682', display: 'inline-block' } }),
       panelOpen ? 'Close Studio' : 'Oasis Studio'
     ),
@@ -650,45 +644,36 @@ function OasisApp() {
       ),
       React.createElement('span', { className: 'scrub-hint' }, 'Hover / Touch Water')
     ),
-    React.createElement(
-      AnimatePresence, null,
-      panelOpen && React.createElement(
-        motion.div,
-        {
-          className: 'hud-panel',
-          initial: { opacity: 0, y: -10, scale: 0.96 },
-          animate: { opacity: 1, y: 0, scale: 1 },
-          exit: { opacity: 0, y: -8, scale: 0.96 },
-          transition: { type: 'spring', stiffness: 320, damping: 26 },
-        },
-        React.createElement('div', { className: 'hud-title' }, 'Camera Presets'),
-        React.createElement(
-          'div', { className: 'preset-grid' },
-          Object.entries(CAMERA_PRESETS).map(([key, preset]) =>
-            React.createElement(
-              motion.button,
-              { key, whileTap: { scale: 0.95 }, className: `preset-btn ${activePreset === key ? 'active' : ''}`, onClick: () => { setActivePreset(key); setCameraGoal(preset); } },
-              preset.label
-            )
+    panelOpen && React.createElement(
+      'div',
+      { className: 'hud-panel' },
+      React.createElement('div', { className: 'hud-title' }, 'Camera Presets'),
+      React.createElement(
+        'div', { className: 'preset-grid' },
+        Object.entries(CAMERA_PRESETS).map(([key, preset]) =>
+          React.createElement(
+            'button',
+            { key, type: 'button', className: `preset-btn ${activePreset === key ? 'active' : ''}`, onClick: () => { setActivePreset(key); setCameraGoal(preset); } },
+            preset.label
           )
-        ),
-        React.createElement(
-          'div', { className: 'slider-row' },
-          React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Canopy Wind Sway'), React.createElement('span', null, windAmp.toFixed(2))),
-          React.createElement('input', { type: 'range', min: 0, max: 0.45, step: 0.01, value: windAmp, onChange: (e) => setWindAmp(parseFloat(e.target.value)) })
-        ),
-        React.createElement(
-          'div', { className: 'slider-row' },
-          React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Water Reflection'), React.createElement('span', null, Math.round(reflectStrength * 100) + '%')),
-          React.createElement('input', { type: 'range', min: 0.2, max: 1.3, step: 0.05, value: reflectStrength, onChange: (e) => setReflectStrength(parseFloat(e.target.value)) })
-        ),
-        React.createElement(
-          'div', { className: 'slider-row' },
-          React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Filmic Exposure'), React.createElement('span', null, exposure.toFixed(2))),
-          React.createElement('input', { type: 'range', min: 0.8, max: 1.4, step: 0.02, value: exposure, onChange: (e) => setExposure(parseFloat(e.target.value)) })
-        ),
-        React.createElement('div', { className: 'badge-row' }, React.createElement('span', null, 'Three.js 0.187.0 WebGL2'), React.createElement('span', null, 'Motion 14.14'))
-      )
+        )
+      ),
+      React.createElement(
+        'div', { className: 'slider-row' },
+        React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Canopy Wind Sway'), React.createElement('span', null, windAmp.toFixed(2))),
+        React.createElement('input', { type: 'range', min: 0, max: 0.45, step: 0.01, value: windAmp, onChange: (e) => setWindAmp(parseFloat(e.target.value)) })
+      ),
+      React.createElement(
+        'div', { className: 'slider-row' },
+        React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Water Reflection'), React.createElement('span', null, Math.round(reflectStrength * 100) + '%')),
+        React.createElement('input', { type: 'range', min: 0.2, max: 1.3, step: 0.05, value: reflectStrength, onChange: (e) => setReflectStrength(parseFloat(e.target.value)) })
+      ),
+      React.createElement(
+        'div', { className: 'slider-row' },
+        React.createElement('div', { className: 'slider-label' }, React.createElement('span', null, 'Filmic Exposure'), React.createElement('span', null, exposure.toFixed(2))),
+        React.createElement('input', { type: 'range', min: 0.8, max: 1.4, step: 0.02, value: exposure, onChange: (e) => setExposure(parseFloat(e.target.value)) })
+      ),
+      React.createElement('div', { className: 'badge-row' }, React.createElement('span', null, 'Three.js 0.187.0 WebGL2'), React.createElement('span', null, 'Real-Data Oasis'))
     )
   );
 }
