@@ -124,7 +124,7 @@ export async function loadReal3DPlantGeometries() {
   const manager = new THREE.LoadingManager();
   const neutralLeafSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="#78965a"/></svg>';
   const neutralLeafTexture = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(neutralLeafSvg);
-  manager.setURLModifier((url) => /\\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(url) ? neutralLeafTexture : url);
+  manager.setURLModifier((url) => /\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(url) ? neutralLeafTexture : url);
   const loader = new GLTFLoader(manager);
   loader.setCrossOrigin('anonymous');
   async function fetchOne(url, kind) {
